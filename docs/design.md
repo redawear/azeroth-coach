@@ -18,6 +18,11 @@ Status: draft, 2026-11-13. Decisions from the first design talk with Reda.
 A small card in a fixed place: below the minimap or below the quest tracker.
 The player can move it. When a trigger fires, the card shows one short tip.
 
+**Mockup feedback, 2026-11-13.** Reda accepts the general direction but asks
+for a more subtle coach. Apply this feedback before the first in-game test.
+The exact placement is still open. The sketches propose the quest tracker
+as the default; Reda has not selected a placement.
+
 **Triggers.** The addon detects all of these live, with game events:
 
 | Trigger | Game signal | Example tip |

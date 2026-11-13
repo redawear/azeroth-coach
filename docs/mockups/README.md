@@ -25,6 +25,8 @@ The quest text, counts, routes, and replies are examples.
 The sketches do not prove support for the Forever client.
 
 The quest-tracker placement is the proposed default. Reda has not selected a placement yet.
+Reda accepts the general direction but asks for a more subtle coach.
+The sketches remain the original concepts. Apply this feedback in the working addon.
 Reda approved Codex for these sketches because Claude was at its API limit.
 This approval applies to this concept task only.
 
