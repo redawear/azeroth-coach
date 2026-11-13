@@ -9,7 +9,7 @@ function addon(missing = false, before = '') {
   const v = vm(); v.run(fs.readFileSync(path.join(__dirname, 'game.lua'), 'utf8'));
   if (missing) v.run('LibQuestieDB = nil');
   if (before) v.run(before);
-  const files = fs.readFileSync(path.join(__dirname, '../addon/AzerothCoach/AzerothCoach.toc'), 'utf8').split('\n').filter(x => x.endsWith('.lua'));
+  const files = fs.readFileSync(path.join(__dirname, '../addon/AzerothCoach/AzerothCoach.toc'), 'utf8').split(/\r?\n/).filter(x => x.endsWith('.lua'));
   files.forEach(v.load); v.run('STUB.Event("PLAYER_LOGIN")'); return v;
 }
 test('full addon loads, indexes provider, uses a quiet tracker section and no tracker module', () => {

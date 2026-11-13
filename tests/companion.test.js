@@ -18,7 +18,7 @@ const { argsFor, parser, run, classify, redact } = require('../companion/agents'
 const { vm } = require('./lua');
 const facts = { q: { 101: { name: 'A Meadow Errand', level: 12 } }, n: { 201: { name: 'Meadow Keeper' } } };
 const job = { session: 'test', chat: 'chat', id: 1, job: 'chat', ctx: '\n--- facts ---\n' + JSON.stringify(facts), text: 'Tell me about quest 101.' };
-function temp(t) { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'azeroth-test-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; }
+function temp(t) { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'azeroth-test-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })); return dir; }
 function db(t, file = ':memory:', clock) { const cache = new Cache(file, clock); t.after(() => cache.close()); return cache; }
 test('strict protocol rejects commands, oversized packets, malformed fields and parses reload hex', () => {
   const wire = ['test', 'chat', '1', '', 'c;job=chat;shot', '', job.ctx, job.text].join('\x1f');

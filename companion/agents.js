@@ -120,10 +120,16 @@ async function run(cfg, job, files, prompt, progress = () => {}) {
     for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete env[key];
     const child = spawn(command.file, args, { cwd: files.cwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
     const parse = parser(cfg.provider); let buffer = '', stderr = '', result, bytes = 0, stopped = false;
-    const timer = setTimeout(() => { stopped = true; killTree(child); reject(Object.assign(new Error('The AI run timed out.'), { code: 'timeout' })); }, cfg.jobs[job.job].timeout * 1000);
+    // Reject only after the child exits. On Windows, a live child locks its work folder, and the cleanup fails.
+    const stop = error => {
+      if (stopped) return; stopped = true; clearTimeout(timer); killTree(child);
+      const fallback = setTimeout(() => reject(error), 5000);
+      child.once('close', () => { clearTimeout(fallback); reject(error); });
+    };
+    const timer = setTimeout(() => stop(Object.assign(new Error('The AI run timed out.'), { code: 'timeout' })), cfg.jobs[job.job].timeout * 1000);
     child.stdout.on('data', data => {
       bytes += data.length;
-      if (bytes > 4_000_000) { stopped = true; killTree(child); clearTimeout(timer); reject(Object.assign(new Error('The AI output is too large.'), { code: 'invalid' })); return; }
+      if (bytes > 4_000_000) { stop(Object.assign(new Error('The AI output is too large.'), { code: 'invalid' })); return; }
       buffer += data.toString(); const lines = buffer.split('\n'); buffer = lines.pop();
       for (const line of lines) { try { const item = parse(JSON.parse(line)); if (item.progress) progress(item.progress); if (item.done) result = item; } catch {} }
     });

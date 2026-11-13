@@ -97,10 +97,13 @@ class Jobs {
       this.log(`AI error (${code}): ${require('./agents').redact(error.detail || error.message)}`);
       return { ...base, status: 'error', code, shotDone: !!job.shot, text: errorText(code, cfg, job) };
     } finally {
-      if (captured) fs.rmSync(captured, { force: true });
-      if (image) fs.rmSync(image, { force: true });
-      if (work) fs.rmSync(work, { recursive: true, force: true });
       this.busy.delete(job.job);
+      // A locked file on Windows must not hide the answer. Startup recovery deletes old run folders.
+      for (const file of [captured, image, work]) {
+        if (!file) continue;
+        try { fs.rmSync(file, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+        catch (error) { this.log(`Cleanup failed for ${path.basename(file)}: ${error.code}`); }
+      }
     }
   }
 }

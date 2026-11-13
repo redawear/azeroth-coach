@@ -1,0 +1,5 @@
+# Keep LF line ends on Windows checkouts. The tests and the companion parse text files.
+* text=auto eol=lf
+*.wav binary
+*.png binary
+*.sqlite binary
