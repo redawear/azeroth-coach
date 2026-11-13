@@ -92,9 +92,10 @@ function redact(text) {
     .replace(/((?:api[_-]?key|(?:access[_-]?)?token|authorization|password)["' ]*[:=]["' ]*)[^\s,"'}]+/gi, '$1[redacted]')
     .replace(/\bsk-[A-Za-z0-9_-]{16,}/g, '[redacted]').slice(-1200);
 }
-function inspectCodex(command) {
+function inspectCodex(command, timeout = 15000) {
+  const deadline = Date.now() + timeout;
   const call = args => {
-    const result = spawnSync(command.file, [...command.args, ...args], { encoding: 'utf8', windowsHide: true, timeout: 15000, maxBuffer: 2_000_000 });
+    const result = spawnSync(command.file, [...command.args, ...args], { encoding: 'utf8', windowsHide: true, timeout: Math.max(1, deadline - Date.now()), maxBuffer: 2_000_000 });
     if (result.status !== 0) throw Object.assign(new Error('Cannot verify the Codex tool policy. Run npm run doctor.'), { code: 'failed' });
     return result.stdout;
   };
@@ -119,7 +120,7 @@ function inspectCodex(command) {
 }
 async function run(cfg, job, files, prompt, progress = () => {}) {
   const command = resolveCommand(cfg.provider, cfg.cliPath);
-  const policy = cfg.provider === 'codex' ? inspectCodex(command) : { servers: [], features: [] };
+  const policy = cfg.provider === 'codex' ? inspectCodex(command, cfg.policyTimeoutMs) : { servers: [], features: [] };
   const args = [...command.args, ...argsFor(cfg.provider, cfg, job, files, policy.servers, policy.features)];
   return new Promise((resolve, reject) => {
     const env = { ...process.env }; delete env.CLAUDECODE;

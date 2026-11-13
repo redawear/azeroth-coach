@@ -128,3 +128,9 @@ test('the quest download checks its digest and contract before it replaces an ad
   assert.equal(questieCompatible(destination), true); assert.equal(extracts, 1);
   assert.equal((await downloadQuestie(client, { fetchFile: () => { throw new Error('Do not fetch twice'); } })).status, 'ready');
 });
+test('stop waits for cleanup that takes longer than the idle pipe timeout', async t => {
+  const { dir } = fixture(t); let done = false;
+  const server = await acquire(dir, async () => { await new Promise(resolve => setTimeout(resolve, 1100)); done = true; });
+  t.after(() => { if (server.listening) server.close(); });
+  assert.equal(await requestStop(dir), true); assert.equal(done, true);
+});

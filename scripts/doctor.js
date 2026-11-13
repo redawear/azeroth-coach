@@ -19,7 +19,7 @@ async function loginCheck(cfg, key = 'chat', timeout = 15, runner = run) {
     atomic(path.join(work, 'mcp.json'), '{"mcpServers":{}}');
     atomic(path.join(work, 'schema.json'), JSON.stringify(tipSchema));
     fs.mkdirSync(path.join(work, 'empty'));
-    const limited = { ...cfg, jobs: { ...cfg.jobs, [key]: { ...cfg.jobs[key], timeout } } };
+    const limited = { ...cfg, policyTimeoutMs: 3000, jobs: { ...cfg.jobs, [key]: { ...cfg.jobs[key], timeout } } };
     const result = await runner(limited, { job: key }, { cwd: path.join(work, 'empty'), mcp: path.join(work, 'mcp.json'), schema: path.join(work, 'schema.json'), job: path.join(work, 'job.json') }, key === 'coach' ? 'Return JSON with only text equal to PONG.' : 'Return only PONG. Do not use tools.');
     return result.text.includes('PONG');
   } finally { fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }

@@ -81,6 +81,7 @@ class Jobs {
         if (!image) { shotFailed = true; this.progress(job, errorText('shot', cfg, job)); }
       }
       const history = historyRows.map(({ role, text }) => ({ role, text }));
+      if (this.stopping) throw Object.assign(new Error('The companion stopped.'), { code: 'failed' });
       const result = await this.runner(cfg, job, { cwd, mcp, job: jobFile, audit, schema, image }, prompt(job, context, facts, history, image), text => this.progress(job, text));
       this.cache.tokens(reserved.id, result.tokens);
       const text = validate(result.text, facts, job.job === 'coach');

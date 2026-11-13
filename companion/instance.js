@@ -27,8 +27,8 @@ async function acquire(dir, stop) {
         input += data;
         if (input.length > 64) return socket.destroy();
         if (input === 'stop\n') {
-          socket.pause();
-          try { await stop(); socket.end('stopped\n'); server.close(); }
+          socket.pause(); socket.setTimeout(0);
+          try { await stop(); socket.end('stopped\n'); if (server.listening) server.close(); }
           catch { socket.destroy(); }
         }
       });
