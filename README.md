@@ -28,6 +28,8 @@ chat.
 
 Full design: [docs/design.md](docs/design.md).
 
+Preview the [four coach sketches](docs/mockups/README.md).
+
 ## Phases
 
 1. **Phase 1, no AI:** quest data, planner, triggers, the card with simple
