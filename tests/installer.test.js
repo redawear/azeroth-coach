@@ -134,3 +134,14 @@ test('stop waits for cleanup that takes longer than the idle pipe timeout', asyn
   t.after(() => { if (server.listening) server.close(); });
   assert.equal(await requestStop(dir), true); assert.equal(done, true);
 });
+test('uninstall removes our addons after the game executable is gone', t => {
+  const { dir, client } = fixture(t);
+  const addons = path.join(client, 'Interface', 'AddOns');
+  fs.mkdirSync(path.join(addons, 'AzerothCoach'), { recursive: true });
+  fs.mkdirSync(path.join(addons, 'QuestieDB'));
+  fs.unlinkSync(path.join(client, 'Wow.exe'));
+  assert.equal(uninstall(addons).status, 'ready');
+  assert.equal(fs.existsSync(path.join(addons, 'AzerothCoach')), false);
+  assert.equal(fs.existsSync(path.join(addons, 'QuestieDB')), true);
+  assert.throws(() => uninstall(dir));
+});

@@ -9,6 +9,7 @@ const net = require('node:net');
 const [app, client, work] = process.argv.slice(2);
 const runtime = path.join(process.env.LOCALAPPDATA, 'AzerothCoach');
 const exe = path.join(app, 'AzerothCoach.exe'); const main = path.join(app, 'companion', 'main.js');
+const timeout = setTimeout(() => { console.error('The runtime check timed out.'); process.exit(1); }, 90000); timeout.unref();
 const pause = () => new Promise(resolve => setTimeout(resolve, 100));
 async function ready() {
   for (let i = 0; i < 150; i++) {
@@ -19,6 +20,7 @@ async function ready() {
   throw new Error('The companion did not start.');
 }
 async function verify() {
+  console.log('Check the installed files and GUI subsystem.');
   const pe = fs.readFileSync(exe); assert.equal(pe.readUInt16LE(subsystemOffset(pe)), 2);
   assert.ok(fs.existsSync(path.join(app, 'node.exe')));
   const addons = path.join(client, 'Interface', 'AddOns');
@@ -27,6 +29,7 @@ async function verify() {
   const cfgFile = path.join(runtime, 'config.json'); const cfg = JSON.parse(fs.readFileSync(cfgFile));
   assert.equal(cfg.provider, 'none'); assert.equal(cfg.addonDir.toLowerCase(), addons.toLowerCase());
   const resultFile = path.join(work, 'gui-mcp.json');
+  console.log('Check GUI-to-GUI MCP pipes.');
   const mcp = spawnSync(exe, [path.resolve(__dirname, '../tests/windows-runtime.js'), app, resultFile], { timeout: 30000, windowsHide: true, encoding: 'utf8' });
   assert.equal(mcp.status, 0, mcp.stderr); assert.equal(JSON.parse(fs.readFileSync(resultFile)).status, 'ready');
   // Make the reply slots before the companion starts. The game does not create them.
@@ -37,6 +40,7 @@ async function verify() {
     const child = spawn(exe, [main], { windowsHide: true, stdio: 'ignore' });
     child.on('error', error => { throw error; }); return child;
   };
+  console.log('Check a second start and two stop cycles.');
   const first = launch();
   try {
     await ready(); await pause();
@@ -50,6 +54,7 @@ async function verify() {
     assert.equal(await requestStop(runtime), true);
     await new Promise(resolve => second.exitCode === null ? second.once('exit', resolve) : resolve());
     // Leave one instance running. The upgrade must stop it before it replaces the app.
+    console.log('Leave a running companion for the upgrade test.');
     const upgradeTarget = launch(); await ready(); upgradeTarget.unref();
   } finally { if (first.exitCode === null) await requestStop(runtime); }
 }

@@ -132,6 +132,7 @@ var
   Answer: Integer;
 begin
   Result := False;
+  GamePage.Values[0] := RemoveBackslashUnlessRoot(Trim(GamePage.Values[0]));
   repeat
     Check := Helper(ExpandConstant('{tmp}'), '--validate --client ' + Q(GamePage.Values[0]));
     State := JsonValue(Check, 'status');

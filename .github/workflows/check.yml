@@ -56,7 +56,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Windows-installer-logs
-          path: ${{ runner.temp }}/azeroth-installer-test/*.log
+          path: |
+            ${{ runner.temp }}/azeroth-installer-test/**/*.log
+            ${{ runner.temp }}/azeroth-installer-test/**/gui-mcp.json
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, installer]

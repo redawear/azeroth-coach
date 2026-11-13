@@ -12,6 +12,7 @@ Set-Content (Join-Path $questie 'keep.txt') 'Keep this addon.'
 $installer = (Resolve-Path 'dist\AzerothCoach-Setup.exe').Path
 $parameters = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLIENT=`"$client`" /PROVIDER=none /SKIPQUESTIEDB=1 /LOG=`"$work\install.log`""
 function Install-Coach {
+  Write-Output 'Run the silent installer.'
   $p = Start-Process $installer -ArgumentList $parameters -PassThru
   if (-not $p.WaitForExit(180000)) { $p.Kill(); throw 'The installer did not exit.' }
   if ($p.ExitCode -ne 0) { Get-Content "$work\install.log"; throw "The silent install failed: $($p.ExitCode)" }
@@ -30,6 +31,7 @@ if ($config.provider -ne 'none' -or $config.jobs.chat.model -ne 'keep-this-model
 if (-not (Test-Path (Join-Path $runtime 'cache.sqlite')) -or -not (Test-Path (Join-Path $runtime 'state.json'))) { throw 'The upgrade deleted runtime files.' }
 $start = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if ($start.PSObject.Properties.Name -contains 'AzerothCoach') { throw 'No AI must not start at sign-in.' }
+Write-Output 'Run the silent uninstaller.'
 $p = Start-Process (Join-Path $app 'unins000.exe') -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait
 if ($p.ExitCode -ne 0) { throw 'The silent uninstall failed.' }
 for ($i = 0; $i -lt 100 -and (Test-Path $app); $i++) { Start-Sleep -Milliseconds 100 }

@@ -23,6 +23,8 @@ function detect({ env = process.env, registry, exists = validClient, resolve = r
   if (!registry) {
     try { registry = process.platform === 'win32' ? JSON.parse(powershell('registry')) : []; } catch { registry = []; }
   }
+  if (!Array.isArray(registry)) registry = [];
+  registry = registry.filter(dir => typeof dir === 'string' && dir.length > 0);
   const candidates = registry.flatMap(dir => [dir, path.join(dir, '_forever_'), path.join(dir, '..', '_forever_')]);
   for (const root of [env['ProgramFiles(x86)'], env.ProgramFiles, 'C:\\Games', 'D:\\Games', 'D:\\', 'C:\\'].filter(Boolean)) {
     for (const name of ['World of Warcraft', 'World of Warcraft Forever', 'WoW']) candidates.push(path.join(root, name, '_forever_'));
@@ -31,7 +33,7 @@ function detect({ env = process.env, registry, exists = validClient, resolve = r
   const found = provider => { try { resolve(provider); return true; } catch { return false; } };
   return { clients, client: clients[0] || '', claude: found('claude'), codex: found('codex') };
 }
-function validateClient(client, { running = () => process.platform === 'win32' && powershell('running', { AC_CLIENT: client }) === 'true' } = {}) {
+function validateClient(client, { running = () => process.platform === 'win32' && powershell('running', { AC_CLIENT: fs.realpathSync(client) }) === 'true' } = {}) {
   if (!validClient(client)) return { status: 'invalid_client', message: INVALID_CLIENT };
   if (running()) return { status: 'game_running', message: 'World of Warcraft is open. Close it, then click Retry.' };
   try {
@@ -121,7 +123,7 @@ async function downloadQuestie(client, { fetchFile = fetchBounded, extract = (ar
   finally { fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }
 function uninstall(addons) {
-  if (path.basename(addons).toLowerCase() !== 'addons' || !validClient(path.resolve(addons, '..', '..'))) throw new Error(INVALID_CLIENT);
+  if (path.basename(addons).toLowerCase() !== 'addons' || path.basename(path.dirname(addons)).toLowerCase() !== 'interface' || path.basename(path.resolve(addons, '..', '..')).toLowerCase() !== '_forever_') throw new Error(INVALID_CLIENT);
   for (const name of ['AzerothCoach', ...Array.from({ length: 200 }, (_, i) => 'AzerothCoach_S' + String(i + 1).padStart(3, '0'))]) {
     fs.rmSync(path.join(addons, name), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
