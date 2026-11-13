@@ -22,12 +22,13 @@ async function acquire(dir, stop) {
   const listen = () => new Promise((resolve, reject) => {
     const server = net.createServer(socket => {
       socket.on('error', () => {}); socket.setTimeout(1000, () => socket.destroy());
-      let input = '';
+      let input = '', requested = false;
       socket.on('data', async data => {
+        if (requested) return;
         input += data;
         if (input.length > 64) return socket.destroy();
         if (input === 'stop\n') {
-          socket.pause(); socket.setTimeout(0);
+          requested = true; socket.setTimeout(0);
           try { await stop(); socket.end('stopped\n'); if (server.listening) server.close(); }
           catch { socket.destroy(); }
         }

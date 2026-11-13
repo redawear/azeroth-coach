@@ -12,7 +12,8 @@ Set-Content (Join-Path $questie 'keep.txt') 'Keep this addon.'
 $installer = (Resolve-Path 'dist\AzerothCoach-Setup.exe').Path
 $parameters = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLIENT=`"$client`" /PROVIDER=none /SKIPQUESTIEDB=1 /LOG=`"$work\install.log`""
 function Install-Coach {
-  $p = Start-Process $installer -ArgumentList $parameters -PassThru -Wait
+  $p = Start-Process $installer -ArgumentList $parameters -PassThru
+  if (-not $p.WaitForExit(180000)) { $p.Kill(); throw 'The installer did not exit.' }
   if ($p.ExitCode -ne 0) { Get-Content "$work\install.log"; throw "The silent install failed: $($p.ExitCode)" }
 }
 Install-Coach
