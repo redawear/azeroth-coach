@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$work = Join-Path $env:RUNNER_TEMP 'azeroth-installer-test'
+$work = Join-Path $env:RUNNER_TEMP 'azeroth-installer-test\Game Files é'
 $client = Join-Path $work '_forever_'
 $app = Join-Path $env:LOCALAPPDATA 'Programs\AzerothCoach'
 $runtime = Join-Path $env:LOCALAPPDATA 'AzerothCoach'
@@ -18,6 +18,11 @@ function Install-Coach {
 Install-Coach
 node scripts/test-installed.js $app $client $work
 if ($LASTEXITCODE -ne 0) { throw 'The installed runtime check failed.' }
+$parameters = $parameters.Replace('/PROVIDER=none', '/PROVIDER=claude')
+Install-Coach
+$start = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+if ($start.AzerothCoach -notlike '*AzerothCoach.exe*companion\main.js*') { throw 'AI must start at sign-in.' }
+$parameters = $parameters.Replace('/PROVIDER=claude', '/PROVIDER=none')
 Install-Coach
 $config = Get-Content (Join-Path $runtime 'config.json') -Raw | ConvertFrom-Json
 if ($config.provider -ne 'none' -or $config.jobs.chat.model -ne 'keep-this-model' -or $config.limits.chat -ne 2) { throw 'The upgrade changed saved settings.' }

@@ -41,6 +41,8 @@ jobs:
       - name: Build the installer
         shell: pwsh
         run: ./scripts/build-installer.ps1
+      - name: Test the QuestieDB release download
+        run: node scripts/test-questiedb.js
       - name: Test the silent installer
         shell: pwsh
         run: ./scripts/test-installer.ps1
@@ -69,7 +71,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           BUILD_RUN: ${{ github.run_id }}
         run: |
-          gh run download "$BUILD_RUN" --name AzerothCoach-Setup --dir dist
+          gh run download "$BUILD_RUN" --repo redawear/azeroth-coach --name AzerothCoach-Setup --dir dist
           if gh release view "$RELEASE_TAG" --json isDraft > release.json; then
             node -e 'if (!JSON.parse(require("fs").readFileSync("release.json")).isDraft) process.exit(1)'
           else

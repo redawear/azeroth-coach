@@ -9,5 +9,7 @@ if (-not (Test-Path $iscc)) {
   $process = Start-Process $setup -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait
   if ($process.ExitCode -ne 0) { throw 'Cannot install Inno Setup 6.' }
 }
-& $iscc /Qp installer/AzerothCoach.iss
+$version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+if ($env:GITHUB_REF_TYPE -eq 'tag') { $version = $env:GITHUB_REF_NAME.TrimStart('v') }
+& $iscc /Qp "/DAppVersion=$version" installer/AzerothCoach.iss
 if ($LASTEXITCODE -ne 0) { throw 'Cannot build the installer.' }

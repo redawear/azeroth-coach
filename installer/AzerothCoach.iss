@@ -313,11 +313,15 @@ var
 begin
   Result := True;
   if UninstallSilent then exit;
+#if VER >= 0x06060000
+  Form := CreateCustomForm(400, 120, False, False);
+#else
   Form := CreateCustomForm;
+  Form.ClientWidth := ScaleX(400);
+  Form.ClientHeight := ScaleY(120);
+#endif
   try
     Form.Caption := 'Uninstall Azeroth Coach';
-    Form.ClientWidth := ScaleX(400);
-    Form.ClientHeight := ScaleY(120);
     Check := TNewCheckBox.Create(Form);
     Check.Parent := Form;
     Check.SetBounds(ScaleX(16), ScaleY(16), ScaleX(368), ScaleY(40));
