@@ -30,3 +30,17 @@ Read `README.md` and `docs/design.md` first. They hold the decisions.
   ASD-STE100 Simplified Technical English: short, active sentences.
 - **No credentials in the repo.** Logins stay in the CLIs. Any key lives
   outside the checkout.
+
+## Build checks
+
+Run `npm test` and `npm run check`. See `docs/windows-test.md` for the client checks.
+Set `QUESTIEDB_SOURCE` to an external QuestieDB source folder to test its real support files.
+Never copy QuestieDB data into this repository.
+
+The companion owns a private, per-run MCP server. Its only tools read wiki and Wowhead pages by allowed IDs.
+The README explains how each player uses their own CLI login. No shared agent credentials are needed.
+
+Use `inspectCodex()` in `companion/agents.js` to check the CLI restrictions.
+Do not print the output of `codex mcp list --json`. It can contain bearer tokens.
+The helper reads it in memory and returns only server names and feature names.
+Never log raw CLI config, process environments, or source request headers.

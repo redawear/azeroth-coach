@@ -5,3 +5,9 @@ __pycache__/
 .env.local
 cache/
 *.sqlite
+
+# Generated files from a development junction.
+addon/AzerothCoach/ack/
+addon/AzerothCoach/sig/
+addon/AzerothCoach/ctl/
+addon/AzerothCoach/presence/
