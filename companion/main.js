@@ -20,49 +20,57 @@ async function start() {
   if (!instance) return;
   if (cfg.provider === 'none') { instance.close(); return; }
   try {
-  function log(text) {
-    const file = path.join(cfg.runtime, 'companion.log');
-    if (fs.existsSync(file) && fs.statSync(file).size > 1_000_000) fs.renameSync(file, file + '.old');
-    const line = new Date().toISOString() + ' ' + text; fs.appendFileSync(file, line + '\n');
-  }
-  // Delete image files left by a crash. No screenshot history survives startup.
-  cleanRuns(cfg.runtime);
-  const cache = new Cache(path.join(cfg.runtime, 'cache.sqlite'));
-  const publisher = new Publisher(cfg, cache, { log });
-  const active = new Set();
-  const capture = new Capture(cfg, payload => jobsFromStrip(payload).forEach(accept), log);
-  const jobs = new Jobs(cache, { log, screenshot: job => capture.shot(job), progress: (job, text) => publisher.write(job, { chat: job.chat, id: job.id, status: 'working', text }) });
-  async function accept(job) {
-    const key = `${job.session}:${job.id}`;
-    try {
-      publisher.begin(job.session); publisher.ack(job);
-      if (active.has(key)) return;
-      const done = cache.get('handled', key);
-      if (done) { publisher.write(job, done); return; }
-      job.receivedAt = Date.now(); active.add(key);
-      publisher.write(job, { chat: job.chat, id: job.id, status: 'working', text: 'Working' });
-      const reply = job.trigger === 'hello' ? { chat: job.chat, id: job.id, status: 'done', text: 'PONG', sources: [] } : await jobs.submit(job);
-      cache.put('handled', key, reply, 30 * 86400000);
-      publisher.cfg.provider = loadConfig().provider;
-      publisher.write(job, reply);
-      publisher.saveState({ lastMessageAt: new Date().toISOString(), job: job.job, status: reply.status, usage: cache.usage() });
-      log(`${job.job}: ${reply.status}; daily use ${JSON.stringify(cache.usage())}`);
-    } catch (error) { log('Companion error: ' + error.message); }
-    finally { active.delete(key); }
-  }
-  capture.start(); publisher.presence();
-  const presence = setInterval(() => publisher.presence(), 30000);
-  // Read only the selected character's file, when configured. Never scan account files.
-  const fallback = setInterval(fallbackReader(cfg.savedVariables, () => publisher.session, accept, log), 5000);
-  let stopped;
-  shutdown = () => stopped ||= (async () => {
-    clearInterval(presence); clearInterval(fallback);
-    await Promise.all([capture.stop(), stopRuns()]);
-    publisher.close(); cache.close();
-  })();
-  const stop = async () => { await shutdown(); instance.close(); };
-  process.on('SIGINT', stop); process.on('SIGTERM', stop);
-  log(`Azeroth Coach started with ${cfg.provider}. Runtime files: ${cfg.runtime}`);
+    function log(text) {
+      const file = path.join(cfg.runtime, 'companion.log');
+      if (fs.existsSync(file) && fs.statSync(file).size > 1_000_000) fs.renameSync(file, file + '.old');
+      const line = new Date().toISOString() + ' ' + text; fs.appendFileSync(file, line + '\n');
+    }
+    // Delete image files left by a crash. No screenshot history survives startup.
+    cleanRuns(cfg.runtime);
+    const cache = new Cache(path.join(cfg.runtime, 'cache.sqlite'));
+    const publisher = new Publisher(cfg, cache, { log });
+    const active = new Set();
+    const tasks = new Set(); let stopping = false;
+    const capture = new Capture(cfg, payload => jobsFromStrip(payload).forEach(accept), log);
+    const jobs = new Jobs(cache, { log, screenshot: job => capture.shot(job), progress: (job, text) => publisher.write(job, { chat: job.chat, id: job.id, status: 'working', text }) });
+    function accept(job) {
+      if (stopping) return;
+      const task = handle(job); tasks.add(task);
+      task.finally(() => tasks.delete(task));
+    }
+    async function handle(job) {
+      const key = `${job.session}:${job.id}`;
+      try {
+        publisher.begin(job.session); publisher.ack(job);
+        if (active.has(key)) return;
+        const done = cache.get('handled', key);
+        if (done) { publisher.write(job, done); return; }
+        job.receivedAt = Date.now(); active.add(key);
+        publisher.write(job, { chat: job.chat, id: job.id, status: 'working', text: 'Working' });
+        const reply = job.trigger === 'hello' ? { chat: job.chat, id: job.id, status: 'done', text: 'PONG', sources: [] } : await jobs.submit(job);
+        cache.put('handled', key, reply, 30 * 86400000);
+        publisher.cfg.provider = loadConfig().provider;
+        publisher.write(job, reply);
+        publisher.saveState({ lastMessageAt: new Date().toISOString(), job: job.job, status: reply.status, usage: cache.usage() });
+        log(`${job.job}: ${reply.status}; daily use ${JSON.stringify(cache.usage())}`);
+      } catch (error) { log('Companion error: ' + error.message); }
+      finally { active.delete(key); }
+    }
+    capture.start(); publisher.presence();
+    const presence = setInterval(() => publisher.presence(), 30000);
+    // Read only the selected character's file, when configured. Never scan account files.
+    const fallback = setInterval(fallbackReader(cfg.savedVariables, () => publisher.session, accept, log), 5000);
+    let stopped;
+    shutdown = () => stopped ||= (async () => {
+      stopping = true; jobs.stop();
+      clearInterval(presence); clearInterval(fallback);
+      await Promise.all([capture.stop(), stopRuns()]);
+      await jobs.drain(); await Promise.allSettled([...tasks]);
+      publisher.close(); cache.close();
+    })();
+    const stop = async () => { await shutdown(); instance.close(); };
+    process.on('SIGINT', stop); process.on('SIGTERM', stop);
+    log(`Azeroth Coach started with ${cfg.provider}. Runtime files: ${cfg.runtime}`);
   } catch (error) { instance.close(); throw error; }
 }
 async function cli() {

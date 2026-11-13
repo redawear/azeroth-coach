@@ -111,7 +111,7 @@ begin
   FileName := ExpandConstant('{tmp}\azeroth-result.json');
   DeleteFile(FileName);
   if not Exec(Base + '\AzerothCoach.exe', Q(Base + '\companion\install.js') + ' ' + Args + ' --result ' + Q(FileName), Base, SW_HIDE, ewWaitUntilTerminated, Code) then exit;
-  if LoadStringFromFile(FileName, Data) then Result := UTF8ToString(Data);
+  if LoadStringFromFile(FileName, Data) then Result := UTF8Decode(Data);
 end;
 
 function ClientPath(Param: String): String;
@@ -265,6 +265,7 @@ begin
   if CurStep = ssPostInstall then begin
     Base := ExpandConstant('{app}');
     WizardForm.StatusLabel.Caption := 'Download the quest data (QuestieDB)…';
+    WizardForm.ProgressGauge.Max := 100;
     WizardForm.ProgressGauge.Position := 25;
     if ExpandConstant('{param:SKIPQUESTIEDB|0}') = '1' then QuestResult := '{"status":"questiedb_failed"}'
     else QuestResult := Helper(Base, '--questie --client ' + Q(GamePage.Values[0]));

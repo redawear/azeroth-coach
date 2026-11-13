@@ -104,3 +104,27 @@ test('the finish check returns each supported status without a game or a live lo
   assert.equal((await checkInstall(cfg, async () => ({ text: 'PONG' }))).status, 'ready');
   assert.equal((await checkInstall(cfg, async () => { throw new Error('No login'); })).status, 'ai_not_signed_in');
 });
+test('the quest download checks its digest and contract before it replaces an addon', async t => {
+  const { dir, client } = fixture(t);
+  const { downloadQuestie } = require('../companion/install');
+  const data = Buffer.from('A fictional archive.');
+  const asset = { name: 'QuestieDB-1.0.0-Forever.zip', browser_download_url: 'https://github.com/Questie/QuestieDB/releases/download/v1.0.0/QuestieDB-1.0.0-Forever.zip', digest: 'sha256:' + require('node:crypto').createHash('sha256').update(data).digest('hex') };
+  const destination = path.join(client, 'Interface', 'AddOns', 'QuestieDB');
+  fs.mkdirSync(destination, { recursive: true }); fs.writeFileSync(path.join(destination, 'old'), 'keep');
+  let extracts = 0;
+  const deps = {
+    fetchFile: async (_url, _limit, json) => json ? { assets: [asset] } : data,
+    extract: (_archive, extracted) => {
+      extracts++; const source = path.join(extracted, 'QuestieDB'); fs.mkdirSync(path.join(source, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(source, 'QuestieDB_Forever.toc'), '## X-Flavor: Forever\n## X-Contract-Version: 4\n');
+      fs.writeFileSync(path.join(source, 'src', 'config.lua'), 'config.contractVersion=4\nconfig.minSupportedContract=1');
+    }
+  };
+  assert.equal((await downloadQuestie(client, { ...deps, fetchFile: async (_url, _limit, json) => json ? { assets: [asset] } : Buffer.from('Wrong') })).status, 'questiedb_failed');
+  assert.equal(extracts, 0); assert.ok(fs.existsSync(path.join(destination, 'old')));
+  assert.equal((await downloadQuestie(client, { ...deps, extract: () => {} })).status, 'questiedb_failed');
+  assert.ok(fs.existsSync(path.join(destination, 'old')));
+  assert.equal((await downloadQuestie(client, deps)).status, 'ready');
+  assert.equal(questieCompatible(destination), true); assert.equal(extracts, 1);
+  assert.equal((await downloadQuestie(client, { fetchFile: () => { throw new Error('Do not fetch twice'); } })).status, 'ready');
+});

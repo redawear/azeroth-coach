@@ -21,16 +21,23 @@ function errorText(code, cfg, job, minutes) {
 class Jobs {
   constructor(cache, { config = loadConfig, runner = run, screenshot = async () => null, progress = () => {}, log = () => {} } = {}) {
     this.cache = cache; this.config = config; this.runner = runner; this.screenshot = screenshot; this.progress = progress; this.log = log;
+    this.pending = new Set(); this.stopping = false;
     this.busy = new Set(); this.chatQueue = Promise.resolve();
   }
   submit(job) {
     // Preserve chat order, including deep questions. Coach runs have a separate lane.
-    if (job.job === 'coach') return this.execute(job);
-    const task = this.chatQueue.then(() => this.execute(job)); this.chatQueue = task.catch(() => {}); return task;
+    const task = job.job === 'coach' ? this.execute(job) : this.chatQueue.then(() => this.execute(job));
+    if (job.job !== 'coach') this.chatQueue = task.catch(() => {});
+    this.pending.add(task);
+    task.then(() => this.pending.delete(task), () => this.pending.delete(task));
+    return task;
   }
+  stop() { this.stopping = true; }
+  async drain() { await Promise.allSettled([...this.pending]); }
   async execute(job) {
     const cfg = this.config();
     const base = { chat: job.chat, id: job.id, by: `${cfg.provider === 'claude' ? 'Claude' : 'Codex'} ${cfg.jobs[job.job].model ? cfg.jobs[job.job].model.replace(/^./, c => c.toUpperCase()) : 'CLI default'} · ${cfg.jobs[job.job].effort}`, sources: [] };
+    if (this.stopping) return { ...base, status: 'error', code: 'failed', text: errorText('failed', cfg, job) };
     let work, image, captured, reserved;
     if (this.busy.has(job.job)) return { ...base, status: 'error', code: 'rate', text: 'The coach is busy. Try again after this answer.' };
     this.busy.add(job.job);

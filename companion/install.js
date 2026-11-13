@@ -23,7 +23,7 @@ function detect({ env = process.env, registry, exists = validClient, resolve = r
   if (!registry) {
     try { registry = process.platform === 'win32' ? JSON.parse(powershell('registry')) : []; } catch { registry = []; }
   }
-  const candidates = registry.flatMap(dir => [dir, path.join(dir, '_forever_')]);
+  const candidates = registry.flatMap(dir => [dir, path.join(dir, '_forever_'), path.join(dir, '..', '_forever_')]);
   for (const root of [env['ProgramFiles(x86)'], env.ProgramFiles, 'C:\\Games', 'D:\\Games', 'D:\\', 'C:\\'].filter(Boolean)) {
     for (const name of ['World of Warcraft', 'World of Warcraft Forever', 'WoW']) candidates.push(path.join(root, name, '_forever_'));
   }
@@ -62,6 +62,9 @@ function install({ client, provider, noSlots = false, link = false, dir = runtim
   } else fs.cpSync(path.join(root, 'addon', 'AzerothCoach'), target, { recursive: true });
   if (!noSlots && provider !== 'none') installSlots(addons);
   atomic(file, JSON.stringify(mergeConfig(existing, client, provider), null, 2) + '\n');
+  const manifestFile = path.join(dir, 'installed-addons.json');
+  const previous = fs.existsSync(manifestFile) ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')) : [];
+  atomic(manifestFile, JSON.stringify([...new Set([...previous, addons])]) + '\n');
   return { status: 'ready', upgrade, client, provider };
 }
 function questieCompatible(folder) {
@@ -80,26 +83,27 @@ async function fetchBounded(url, maxBytes, json = false) {
   for await (const chunk of response.body) { size += chunk.length; if (size > maxBytes) throw new Error('The quest data download is too large.'); chunks.push(chunk); }
   const data = Buffer.concat(chunks); return json ? JSON.parse(data) : data;
 }
-async function downloadQuestie(client) {
+async function downloadQuestie(client, { fetchFile = fetchBounded, extract = (archive, extracted) => powershell('extract', { AC_ARCHIVE: archive, AC_EXTRACT: extracted }) } = {}) {
   const addons = path.join(client, 'Interface', 'AddOns');
   const destination = path.join(addons, 'QuestieDB');
   if (questieCompatible(destination)) return { status: 'ready' };
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'azeroth-questie-'));
   try {
-    const release = await fetchBounded('https://api.github.com/repos/Questie/QuestieDB/releases/latest', 2_000_000, true);
+    const release = await fetchFile('https://api.github.com/repos/Questie/QuestieDB/releases/latest', 2_000_000, true);
     const asset = release.assets.find(asset => /^QuestieDB-[\w.+-]+-Forever\.zip$/.test(asset.name));
     if (!asset || !/^https:\/\/github\.com\/Questie\/QuestieDB\/releases\/download\//.test(asset.browser_download_url) || !/^sha256:[a-f0-9]{64}$/.test(asset.digest)) throw new Error('No verified Forever release.');
-    const data = await fetchBounded(asset.browser_download_url, 150_000_000);
+    const data = await fetchFile(asset.browser_download_url, 150_000_000);
     if ('sha256:' + crypto.createHash('sha256').update(data).digest('hex') !== asset.digest) throw new Error('The quest data checksum failed.');
     const archive = path.join(work, 'questie.zip'); fs.writeFileSync(archive, data);
     const extracted = path.join(work, 'extracted');
-    powershell('extract', { AC_ARCHIVE: archive, AC_EXTRACT: extracted });
+    extract(archive, extracted);
     const source = path.join(extracted, 'QuestieDB');
     if (!questieCompatible(source)) throw new Error('The quest data does not support contract 4.');
     // Keep an old addon until the new release passes its checks.
     fs.mkdirSync(addons, { recursive: true });
     const staging = path.join(addons, '.azeroth-questie-' + crypto.randomUUID());
     const backup = staging + '-old';
+    let committed = false;
     try {
       fs.cpSync(source, staging, { recursive: true });
       if (fs.existsSync(destination)) {
@@ -107,7 +111,11 @@ async function downloadQuestie(client) {
         fs.renameSync(destination, backup);
       }
       try { fs.renameSync(staging, destination); } catch (error) { if (fs.existsSync(backup)) fs.renameSync(backup, destination); throw error; }
-    } finally { fs.rmSync(staging, { recursive: true, force: true }); fs.rmSync(backup, { recursive: true, force: true }); }
+      committed = true;
+    } finally {
+      fs.rmSync(staging, { recursive: true, force: true });
+      if (committed) fs.rmSync(backup, { recursive: true, force: true });
+    }
     return { status: 'ready' };
   } catch { return { status: 'questiedb_failed' }; }
   finally { fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
@@ -126,7 +134,12 @@ async function cli(args = process.argv.slice(2)) {
     if (args.includes('--detect')) result = detect();
     else if (args.includes('--validate')) result = validateClient(option('--client'));
     else if (args.includes('--questie')) result = await downloadQuestie(option('--client'));
-    else if (args.includes('--uninstall')) result = uninstall(option('--addons'));
+    else if (args.includes('--uninstall')) {
+      const manifest = path.join(runtimeDir(), 'installed-addons.json');
+      const addons = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, 'utf8')) : [option('--addons')];
+      for (const folder of addons) if (fs.existsSync(folder)) uninstall(folder);
+      fs.rmSync(manifest, { force: true }); result = { status: 'ready' };
+    }
     else if (args.includes('--check')) result = await require('../scripts/doctor').checkInstall();
     else result = install({ client: option('--client'), provider: option('--provider'), noSlots: args.includes('--no-slots'), link: args.includes('--link') });
   } catch (error) { result = { status: 'failed', message: error.message }; process.exitCode = 1; }
