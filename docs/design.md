@@ -1,6 +1,7 @@
 # Design
 
-Status: draft, 2026-11-13. Decisions from the first design talk with Reda.
+Status: build decisions, 2026-11-13. The [implementation brief](implementation.md) gives the final details.
+The first build needs a Windows and Forever client test.
 
 ## Scope
 
@@ -20,8 +21,8 @@ The player can move it. When a trigger fires, the card shows one short tip.
 
 **Mockup feedback, 2026-11-13.** Reda accepts the general direction but asks
 for a more subtle coach. Apply this feedback before the first in-game test.
-The exact placement is still open. The sketches propose the quest tracker
-as the default; Reda has not selected a placement.
+The build uses a section below the quest tracker. It has no box, glow, or sound.
+The player can move it. This follows the implementation brief.
 
 **Triggers.** The addon detects all of these live, with game events:
 
@@ -82,7 +83,7 @@ Midnight API). The coach does not need combat data.
 
 | Source | Use | Rules |
 |---|---|---|
-| **QuestieDB, Forever data** | The facts for the planner: quests, givers, positions, prerequisites (`preQuestSingle`, `preQuestGroup`), level, race and class limits | GPL-3.0. Bundled data makes our code GPL-3.0. Some Forever data is entered by hand and can be wrong |
+| **QuestieDB, Forever data** | The facts for the planner: quests, givers, positions, prerequisites (`preQuestSingle`, `preQuestGroup`), level, race and class limits | Use its public runtime API. Its licensing includes historic rights that remain unresolved. Do not bundle its data. Some Forever data is entered by hand and can be wrong |
 | **Warcraft Wiki** (`warcraft.wiki.gg`) | Extra context for the chat: quest stories, tips, dungeon pages | CC BY-SA 4.0. Use the MediaWiki API (`/api.php`) with a clear user agent. Credit the wiki. It has about 237 Forever quest pages, so coverage is partial |
 | **Wowhead** (`wowhead.com/forever`) | Extra context for the chat, one page for each question: quests, NPCs, items, comments | See "Wowhead rules" below |
 
@@ -125,26 +126,7 @@ job, the same way as in a coding tool:
 If the AI fails or reaches its limit, the card falls back to the simple tips
 from the quest data, and the chat says so.
 
-Example config (draft; check the exact CLI flags in phase 2):
-
-```toml
-provider = "claude"     # claude | codex (one only)
-
-[coach]
-model = "sonnet"
-effort = "low"
-
-[chat]
-model = "opus"
-effort = "medium"
-
-[deep]
-model = "opus"
-effort = "high"
-
-[limits]
-max_tips_per_hour = 6
-```
+The companion uses JSON config outside the checkout. See the [README](../README.md#settings) for the current format.
 
 **Token care:**
 - Tips come only from triggers, never from a timer that runs all the time.
@@ -185,12 +167,19 @@ send one screenshot with the question. Never all the time.
   SavedVariables so the agent can read it.
 - **Error tools:** BugSack for Lua errors, `/etrace` for events.
 
-## Open questions
+## Resolved build choices
 
-- The exact API names on the Forever client: completed quests, player
-  facing, quest XP.
-- License: bundle QuestieDB (we become GPL-3.0) or depend on the QuestieDB
-  addon at runtime. Bundling is simpler for two players.
-- The companion language: TypeScript on Node (like wow-ai) or Python.
-- The exact CLI flags for model and effort in `claude` and `codex`.
-- The card design: Blizzard style to match Forever. Make a mockup before code.
+- QuestieDB stays a separate runtime dependency. We do not bundle its data.
+- The companion uses JavaScript, Node 22.16 or later, and SQLite.
+- The CLI flag sets appear in the implementation brief and in `companion/agents.js`.
+- One shared `UI.lua` provides the Blizzard templates. Features add no separate design system.
+
+## Client checks still needed
+
+- Completed quests, player facing, quest log maximum, map coordinates, and trivial quest range.
+- QuestieDB coverage and area-to-map mappings on Forever.
+- Native frames, tracker taint, transport signals, and Windows CLI flags.
+- Screenshot capture, display scale, HDR, and fullscreen behavior.
+- The ZAM terms and Blizzard addon policy before any public release.
+
+Use the [Windows test guide](windows-test.md) for these checks.

@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/chelinho139/wow-ai",
+  "commit": "60165ca5bb6c6452f18604dc7b4fe8678b607bed",
+  "license": "MIT",
+  "files": {
+    "addon/AzerothCoach/Codec.lua": "addon/WoWAI/Codec.lua; global name changed",
+    "companion/capture.ps1": "bridge/capture.ps1; same codec; foreground and client-size checks, clear signal, one-shot client screenshot",
+    "addon/AzerothCoach/Link.lua": "addon/WoWAI/WoWAI.lua; pixel strip, WAV signals, slots, session checks; coach-only adaptation",
+    "addon/AzerothCoach/Inbox.lua": "addon/WoWAI/Inbox.lua; renamed placeholder",
+    "addon/AzerothCoach/Route.lua": "addon/WoWAI/Map.lua; projection, continent size and heading math; data-only route",
+    "addon/AzerothCoach/State.lua": "addon/WoWAI/WoWAI.lua; guarded API and game context approach; new compact facts",
+    "addon/AzerothCoach/UI.lua": "addon/WoWAI/WoWAI.lua; tooltip panel backdrop pattern; shared native UI helpers; transcript bubbles and role colors",
+    "companion/protocol.js": "bridge/protocol.js; same record layout, Lua escaping, WAV and slot math; removed macros and map commands",
+    "companion/install-slots.js": "bridge/install-slots.js; renamed slots and signal files, no action signals",
+    "companion/agents.js": "bridge/agents.js; stream-event parser and npm shim method; only Claude/Codex and constrained tools",
+    "companion/publisher.js": "bridge/bridge.js; latest-bundle slot writes, silent WAV notification and restore method; rewritten",
+    "companion/supervisor.js": "bridge/bridge.js; capture subprocess approach; added one-shot lifecycle"
+  }
+}

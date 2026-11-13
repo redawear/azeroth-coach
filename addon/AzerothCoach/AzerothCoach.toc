@@ -1,0 +1,23 @@
+## Interface: 16001
+## Title: Azeroth Coach
+## Notes: Quest tips and a chat coach for Forever.
+## Author: redawear
+## Version: 0.1.0
+## OptionalDeps: QuestieDB
+## SavedVariablesPerCharacter: AzerothCoachDB
+Planner.lua
+Codec.lua
+Inbox.lua
+Data.lua
+State.lua
+Triggers.lua
+Tips.lua
+UI.lua
+Link.lua
+Route.lua
+CoachSection.lua
+ChatWindow.lua
+Settings.lua
+Slash.lua
+Core.lua
+Bindings.xml
