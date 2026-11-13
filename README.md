@@ -1,7 +1,7 @@
 # Azeroth Coach
 
 A quest coach and an AI chat for **World of Warcraft: Forever**.
-Private build for Reda and friends. Target: client 1.60.1, interface 16001.
+A test build for Reda and friends. Target: client 1.60.1, interface 16001.
 
 The full build is ready for its first Windows test. Automated checks pass on Linux.
 No part has run in the Forever client yet.
@@ -27,7 +27,6 @@ No AI gives coach tips from the quest data.
 
 The file has no code signature. Windows SmartScreen shows **Windows protected your PC**.
 Click **More info**, then **Run anyway**.
-The repository is private. Downloads need repository access, or Reda can send the file.
 Run a newer installer to update. It keeps your settings, cache, and chat history.
 
 The Start menu has **Restart Azeroth Coach**, **Edit settings**, **Open log folder**, and **Uninstall Azeroth Coach**.

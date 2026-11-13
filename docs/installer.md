@@ -137,8 +137,7 @@ A newer `AzerothCoach-Setup.exe` upgrades in place:
 - The file has no code signature. When it is downloaded from the internet,
   Windows SmartScreen shows "Windows protected your PC". The player clicks
   **More info**, then **Run anyway**.
-- The repository is private. A player needs repository access to download the
-  release, or Reda sends the file.
+- The repository is public, so any player can download the release.
 - No automatic update. The player runs a newer installer.
 - The 200 reply addons show in the in-game addon list. The game does not let
   us hide them.
