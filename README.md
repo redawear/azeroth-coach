@@ -20,7 +20,7 @@ The game does not let an addon use the network. So the project has two parts:
 | Part | Runs | Does |
 |---|---|---|
 | `addon/` | Inside the game (Lua) | Reads the live game state, detects the triggers, shows the card and the chat, draws the arrow |
-| `companion/` | On the Windows PC | Talks to the AI through your own `claude` or `codex` login, reads the wiki, keeps a cache |
+| `companion/` | On the Windows PC | Talks to the AI through your own `claude` or `codex` login (one of them), reads the wiki and Wowhead, keeps a cache |
 
 The addon works alone. Without the companion, the card shows simple tips from
 the quest data. With the companion, the AI writes the tips and answers the

@@ -79,49 +79,63 @@ Midnight API). The coach does not need combat data.
 |---|---|---|
 | **QuestieDB, Forever data** | The facts for the planner: quests, givers, positions, prerequisites (`preQuestSingle`, `preQuestGroup`), level, race and class limits | GPL-3.0. Bundled data makes our code GPL-3.0. Some Forever data is entered by hand and can be wrong |
 | **Warcraft Wiki** (`warcraft.wiki.gg`) | Extra context for the chat: quest stories, tips, dungeon pages | CC BY-SA 4.0. Use the MediaWiki API (`/api.php`) with a clear user agent. Credit the wiki. It has about 237 Forever quest pages, so coverage is partial |
-| **Wowhead** | Links only. The player opens the page in the browser | Its `robots.txt` blocks AI agents (`ClaudeBot`, `anthropic-ai`, `GPTBot` and others: `Disallow: /`). The AI must not fetch it |
+| **Wowhead** (`wowhead.com/forever`) | Extra context for the chat, one page for each question: quests, NPCs, items, comments | See "Wowhead rules" below |
+
+**Wowhead rules.** Its `robots.txt` blocks the AI *training* crawlers on
+the whole site (`ClaudeBot`, `GPTBot`, `CCBot`, `Google-Extended`,
+`anthropic-ai` and others). For all other agents (`User-agent: *`) it allows
+the quest, NPC and item pages, and blocks only `/search`, `/list`,
+`/random` and `/account`. So:
+- Read one page only when a question needs it. No bulk download, no
+  prefetch.
+- Go to the page directly from the ID in the quest data, for example
+  `https://www.wowhead.com/forever/quest=<id>`. Never use `/search` or
+  `/list`.
+- Send a clear user agent that is not one of the blocked crawlers.
+- Cite the link in the answer, so the player can open the page.
+- Cache each page. Stop and fall back to the wiki if Wowhead blocks us.
+- The Wowhead terms are in a separate ZAM / Fanbyte document. We have not
+  read it yet. Read it before any public release.
 
 **Cache.** The companion keeps a local cache (SQLite) of wiki pages and AI
-lookups, with a time limit for each entry. Claude and Codex share one cache,
-through one tool that we own (`wiki_lookup`). The tool returns only the
+lookups, with a time limit for each entry. The cache is the same for Claude and Codex,
+through the tools that we own (`wiki_lookup`, `wowhead_lookup`). The tool returns only the
 relevant section of a page, not the full page. This saves tokens.
 
 ## The AI: Claude or Codex, set by the player
 
-The companion uses the player's own CLI logins: `claude -p` and `codex exec`.
-This is personal use of the player's own plan on the player's own PC.
+The player connects **one** AI: Claude **or** Codex, not both. The companion
+uses the player's own CLI login: `claude -p` or `codex exec`. This is
+personal use of the player's own plan on the player's own PC.
 
-The player sets the AI for each job, the same way as in a coding tool:
+Inside that one provider, the player sets the model and the effort for each
+job, the same way as in a coding tool:
 
-| Job | Default provider | Default model | Default effort |
-|---|---|---|---|
-| `coach` (the card tips, frequent and short) | Claude | Sonnet | low |
-| `chat` (answers) | Claude | Opus | medium |
-| `deep` (a "think harder" button in the chat) | Claude | Opus | high |
+| Job | Default with Claude | Default with Codex |
+|---|---|---|
+| `coach` (the card tips, frequent and short) | Sonnet, low effort | the CLI default model, low effort |
+| `chat` (answers) | Opus, medium effort | the CLI default model, medium effort |
+| `deep` (a "think harder" button in the chat) | Opus, high effort | the CLI default model, high effort |
 
-Codex is the alternative for each job. If one provider fails or reaches its
-limit, the companion can use the other one (setting).
+If the AI fails or reaches its limit, the card falls back to the simple tips
+from the quest data, and the chat says so.
 
 Example config (draft; check the exact CLI flags in phase 2):
 
 ```toml
+provider = "claude"     # claude | codex (one only)
+
 [coach]
-provider = "claude"     # claude | codex
 model = "sonnet"
 effort = "low"
 
 [chat]
-provider = "claude"
 model = "opus"
 effort = "medium"
 
 [deep]
-provider = "claude"
 model = "opus"
 effort = "high"
-
-[fallback]
-enabled = true          # use the other provider on error or limit
 
 [limits]
 max_tips_per_hour = 6
@@ -131,7 +145,7 @@ max_tips_per_hour = 6
 - Tips come only from triggers, never from a timer that runs all the time.
 - A minimum pause between tips, and a maximum per hour.
 - Short, exact context: the facts from the quest data, not raw pages.
-- The cache stops repeated wiki reads.
+- The cache stops repeated wiki and Wowhead reads.
 - The companion shows the use for each job in its window.
 
 ## The live link between the game and the PC
