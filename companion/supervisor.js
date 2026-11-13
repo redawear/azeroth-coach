@@ -37,6 +37,9 @@ class Capture {
       child.on('error', () => finish(false)); child.on('close', code => finish(code === 0 && fs.existsSync(file)));
     });
   }
-  stop() { this.stopped = true; clearTimeout(this.timer); if (this.child) this.child.kill(); }
+  async stop() {
+    this.stopped = true; clearTimeout(this.timer);
+    if (this.child && this.child.exitCode === null) await new Promise(resolve => { this.child.once('close', resolve); this.child.kill(); });
+  }
 }
 module.exports = { Capture, captureArgs };

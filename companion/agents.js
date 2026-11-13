@@ -4,6 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawn, spawnSync } = require('node:child_process');
+const activeChildren = new Set();
+async function stopRuns() {
+  await Promise.all([...activeChildren].map(child => new Promise(resolve => {
+    child.once('close', resolve); killTree(child);
+  })));
+}
 function resolveCommand(provider, configured) {
   if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.');
   const exists = p => { try { return fs.statSync(p).isFile(); } catch { return false; } };
@@ -119,6 +125,8 @@ async function run(cfg, job, files, prompt, progress = () => {}) {
     const env = { ...process.env }; delete env.CLAUDECODE;
     for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete env[key];
     const child = spawn(command.file, args, { cwd: files.cwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
+    activeChildren.add(child);
+    child.once('close', () => activeChildren.delete(child));
     const parse = parser(cfg.provider); let buffer = '', stderr = '', result, bytes = 0, stopped = false;
     // Reject only after the child exits. On Windows, a live child locks its work folder, and the cleanup fails.
     const stop = error => {
@@ -144,4 +152,4 @@ async function run(cfg, job, files, prompt, progress = () => {}) {
     child.stdin.on('error', () => {}); child.stdin.end(prompt);
   });
 }
-module.exports = { resolveCommand, argsFor, parser, run, classify, killTree, inspectCodex, redact };
+module.exports = { resolveCommand, argsFor, parser, run, classify, killTree, inspectCodex, redact, stopRuns };

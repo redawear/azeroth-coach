@@ -19,7 +19,7 @@ const defaults = {
 function loadConfig(dir = runtimeDir()) {
   const file = path.join(dir, 'config.json');
   const input = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
-  if (input.provider && !['claude', 'codex'].includes(input.provider)) throw new Error('Set provider to claude or codex.');
+  if (input.provider && !['claude', 'codex', 'none'].includes(input.provider)) throw new Error('Set provider to claude, codex, or none.');
   const cfg = { ...defaults, ...input, limits: { ...defaults.limits, ...input.limits }, capture: { ...defaults.capture, ...input.capture }, jobs: {} };
   for (const key of Object.keys(defaults.jobs)) {
     cfg.jobs[key] = { ...defaults.jobs[key], ...(cfg.provider === 'codex' ? { model: '' } : {}), ...input.jobs?.[key] };

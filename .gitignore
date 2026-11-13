@@ -11,3 +11,5 @@ addon/AzerothCoach/ack/
 addon/AzerothCoach/sig/
 addon/AzerothCoach/ctl/
 addon/AzerothCoach/presence/
+build/
+dist/
