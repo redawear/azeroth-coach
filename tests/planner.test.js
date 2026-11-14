@@ -37,6 +37,15 @@ test('ranking avoids the starter of an unfinished quest and prioritizes turn-ins
   v.run('p.active[1].complete=true; rows=AzerothCoach.Planner.Rank({q[1]},p,function() return {map=10,x=0,y=0} end)');
   assert.equal(v.value('rows[1].turnIn'), 'true');
 });
+
+test('ranking keeps the nearest quest first when the other scores match', () => {
+  const v = planner();
+  v.run('p.map=10;p.x=0;p.y=0;q[4].level=12;points={[1]={map=10,x=.1,y=0},[4]={map=10,x=.8,y=0}};point=function(q) return points[q.id] end;rows=AzerothCoach.Planner.Rank({q[4],q[1]},p,point)');
+  assert.equal(v.value('rows[1].quest.id'), '1');
+  assert.equal(v.value('rows[1].point == points[1]'), 'true');
+  v.run('p.x=1;rows=AzerothCoach.Planner.Rank({q[1],q[4]},p,point)');
+  assert.equal(v.value('rows[1].quest.id'), '4');
+});
 test('trigger priority, pause, dedup, permanent gray suppression, death window and hide rules', () => {
   const v = planner();
   v.run('saved={seen={}};settings={tipPause=600}; tips={{kind="zone",key="z"},{kind="dungeon",key="d"}}');

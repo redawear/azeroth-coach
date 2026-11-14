@@ -25,6 +25,11 @@ test('full addon loads, indexes provider, uses a quiet tracker section and no tr
   assert.equal(v.value('AzerothCoach.CoachSection.frame.shown'), 'false');
   v.run('STUB.Advance(2)');
   assert.equal(v.value('AzerothCoach.CoachSection.frame.shown'), 'true');
+  v.run('AzerothCoach.CoachSection.Menu(); menuLabels={}; for _,row in ipairs(AzerothCoach.UI.menu.rows) do menuLabels[#menuLabels+1]=row.text end');
+  assert.deepEqual(JSON.parse(v.value('AzerothCoach.State.JSON(menuLabels)')),
+    ['Ask the coach', 'Dismiss', 'Pause 15 minutes', 'Pause 1 hour', 'Dock to quest tracker', 'Settings']);
+  v.run('AzerothCoach.CoachSection.Dismiss()');
+  assert.equal(v.value('AzerothCoach.CoachSection.frame.shown'), 'false');
 });
 test('missing provider leaves chat and diagnostics usable', () => {
   const v = addon(true);
@@ -67,9 +72,13 @@ test('AI deadline keeps the template and ignores a late tip', () => {
   v.run('AzerothCoach.Link.Receive({session=AzerothCoach.db.session,now=time(),replies={{id=offered,chat="coach",status="done",text="Late AI"}}})');
   assert.equal(v.value('AzerothCoach.CoachSection.tip.body'), 'Template');
 });
-test('source copy, route geometry, limits and whole JSON facts', () => {
-  const v = addon(); v.run('AzerothCoach.ChatWindow.Copy("https://example.test/"); d,b=AzerothCoach.Route.Heading({map=10,x=0,y=0},{map=10,x=0.3,y=0.4})');
+test('source copy, map geometry, limits and whole JSON facts', () => {
+  const v = addon(); v.run('AzerothCoach.ChatWindow.Copy("https://example.test/"); d,b=AzerothCoach.Geo.Heading({map=10,x=0,y=0},{map=10,x=0.3,y=0.4})');
   assert.equal(v.value('d'), '500.0');
+  assert.ok(Math.abs(Number(v.value('b')) - Math.atan2(-300, -400)) < 1e-10);
+  assert.equal(v.value('AzerothCoach.Geo.Continent(10)'), '1');
+  v.run('px,py=AzerothCoach.Geo.Project(10,.3,.4,1)');
+  assert.equal(v.value('px'), '0.3'); assert.equal(v.value('py'), '0.4');
   assert.equal(v.value('AzerothCoach.ChatWindow.copy.input.text'), 'https://example.test/');
   v.run('long=string.rep("é",401); bad,why=AzerothCoach.Link.Send("chat","",long); ctx=AzerothCoach.State.Context(AzerothCoach.player,AzerothCoach.CoachSection.tip,"")');
   assert.equal(v.value('bad'), 'nil');
@@ -144,7 +153,7 @@ test('hello and coach jobs preserve the chat outbox; combat redraws the strip', 
   v.run('STUB.combat=true; AzerothCoach.Link.Tick()'); assert.equal(v.value('AzerothCoachStrip.shown'), 'false');
   v.run('STUB.combat=false; AzerothCoach.Link.Tick()'); assert.equal(v.value('AzerothCoachStrip.shown'), 'true');
 });
-test('normal drag keeps the dock, a waiting tip blocks offers, and a route survives expiry', () => {
+test('normal drag keeps the dock and a waiting tip blocks offers', () => {
   const v = addon();
   v.run('AzerothCoach.CoachSection.header.scripts.OnDragStart(); AzerothCoach.CoachSection.header.scripts.OnDragStop()');
   assert.equal(v.value('AzerothCoach.db.position'), 'nil');
@@ -152,9 +161,6 @@ test('normal drag keeps the dock, a waiting tip blocks offers, and a route survi
   assert.equal(v.value('AzerothCoach.waiting.key'), 'wait');
   v.run('AzerothCoach.candidates={}; AzerothCoach.tipEvents={}; AzerothCoach.waiting.createdAt=time()-301; STUB.Advance(1)');
   assert.equal(v.value('AzerothCoach.waiting'), 'nil');
-  v.run('UnitOnTaxi=function() return false end; AzerothCoach.player.taxi=false;AzerothCoach.Route.Start({{map=10,x=.2,y=.3,label="Fixture"}});AzerothCoach.CoachSection.shownAt=time()-601;STUB.Advance(1);AzerothCoach.CoachSection.Refresh()');
-  assert.equal(v.value('AzerothCoach.CoachSection.route:IsShown()'), 'true');
-  assert.equal(v.value('AzerothCoach.CoachSection.frame.shown'), 'true');
 });
 test('QuestieDB uses map groups, override strings, alternative dungeon areas, and reverse prerequisites', () => {
   const v = addon(false, `

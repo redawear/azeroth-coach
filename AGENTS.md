@@ -13,6 +13,7 @@ Read `README.md` and `docs/design.md` first. They hold the decisions.
 
 ## Rules
 
+- No arrows and no routes. The AI can give a compass direction in text (#6).
 - **Facts come from the quest data, not from the model.** Never let the AI
   name a quest, an NPC, or a position that the quest data, the wiki or
   Wowhead did not give.

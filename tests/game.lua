@@ -57,7 +57,6 @@ function UnitClass() return "Warrior", "WARRIOR", 1 end
 function UnitRace() return "Human", "Human", 1 end
 function UnitFactionGroup() return "Alliance" end
 function GetZoneText() return "Test Meadow" end
-function GetPlayerFacing() return 0 end
 function UnitIsDeadOrGhost() return STUB.dead end
 function IsInInstance() return STUB.instance end
 C_Map = {

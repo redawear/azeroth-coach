@@ -165,20 +165,6 @@ function U.Menu(owner, entries)
         U.menu:ClearAllPoints(); U.menu:SetPoint("CENTER", owner, "CENTER"); U.menu:Show()
     end
 end
-function U.Arrow(parent)
-    local arrow = parent:CreateTexture(nil, "OVERLAY")
-    arrow:SetTexture("Interface\\Minimap\\MinimapArrow"); arrow:SetSize(16, 16)
-    return arrow
-end
-function U.Pin(parent, number)
-    local pin = CreateFrame("Button", nil, parent)
-    pin:SetSize(20, 20)
-    local icon = pin:CreateTexture(nil, "BACKGROUND")
-    icon:SetAtlas("QuestNormal"); icon:SetAllPoints()
-    local label = U.Text(pin, tostring(number), "small")
-    label:SetPoint("CENTER")
-    return pin
-end
 function U.Fade(frame, show, seconds)
     if show then frame:Show() end
     local start = GetTime()

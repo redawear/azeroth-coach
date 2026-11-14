@@ -39,6 +39,7 @@ The player can move it. This follows the implementation brief.
 | Arrival in a capital | zone | "Train, take the 2 city quests, bind your hearthstone." |
 
 **Rules for the card:**
+- No arrows and no routes. The AI can give a compass direction in text (#6).
 - No card in combat.
 - One card at a time. A minimum pause between cards (setting).
 - The player can close a card or snooze the coach.
@@ -68,7 +69,7 @@ Without the companion, step 3 is a simple text template. The card still works.
 
 - Level, XP, rested XP, race, class, faction, gold, talents, professions,
   reputation.
-- Zone and map position, and the direction the player faces (for the arrow).
+- Zone and map position.
 - The quest log with objectives and progress.
 - The list of completed quest IDs (the key to chains). Verify the exact API
   on the Forever client.
@@ -159,7 +160,7 @@ send one screenshot with the question. Never all the time.
 
 ## Test approach
 
-- **Logic tests without the game:** the planner, the chains, and the routes
+- **Logic tests without the game:** the planner, the chains, and the map math
   are plain Lua with fake game data. They run on any machine.
 - **In-game tests on the Windows PC:** clone the repo, link the addon folder
   into the Forever `Interface\AddOns`, run Claude Code or Codex in the repo.
@@ -176,7 +177,7 @@ send one screenshot with the question. Never all the time.
 
 ## Client checks still needed
 
-- Completed quests, player facing, quest log maximum, map coordinates, and trivial quest range.
+- Completed quests, quest log maximum, map coordinates, and trivial quest range.
 - QuestieDB coverage and area-to-map mappings on Forever.
 - Native frames, tracker taint, transport signals, and Windows CLI flags.
 - Screenshot capture, display scale, HDR, and fullscreen behavior.

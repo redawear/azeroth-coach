@@ -12,7 +12,6 @@ SlashCmdList.AZEROTHCOACH = function(text)
     if cmd == "pause" and (rest == "" or tonumber(rest)) then AC.db.pauseUntil = time() + math.max(1, tonumber(rest) or 15) * 60
     elseif cmd == "resume" and rest == "" then AC.db.pauseUntil = 0
     elseif cmd == "dock" and rest == "" then AC.CoachSection.Dock()
-    elseif cmd == "route" and rest == "stop" then AC.Route.Stop()
     elseif (cmd == "status" or cmd == "doctor") and rest == "" then AC.Doctor()
     elseif cmd == "settings" and rest == "" then AC.Settings.Open()
     elseif cmd == "ping" and rest == "" then AC.Link.Hello(function(reply) AC.Print(reply.text or "PONG") end)

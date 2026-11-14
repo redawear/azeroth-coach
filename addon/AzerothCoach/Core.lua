@@ -128,7 +128,7 @@ local function tick()
         c.tip = nil; AC.UI.Fade(c.block, false, 1)
     else c.Refresh() end
     if AC.tipEvents and next(AC.tipEvents) and time() - (AC.db.lastTipAt or -1e9) >= AC.db.settings.tipPause then AC.Update("DEFERRED") end
-    AC.TryOffer(); AC.ChatWindow.Refresh(); AC.Route.Pins()
+    AC.TryOffer(); AC.ChatWindow.Refresh()
 end
 local function initialize()
     AzerothCoachDB = AzerothCoachDB or {}
@@ -148,7 +148,7 @@ local function initialize()
         end
     end)
     AC.Link.Initialize()
-    C_Timer.NewTicker(1, tick); C_Timer.NewTicker(0.1, AC.Route.Tick)
+    C_Timer.NewTicker(1, tick)
 end
 local events = CreateFrame("Frame")
 for _, event in ipairs({"PLAYER_LOGIN", "PLAYER_LEVEL_UP", "ZONE_CHANGED_NEW_AREA", "QUEST_TURNED_IN", "QUEST_LOG_UPDATE", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "CINEMATIC_START", "CINEMATIC_STOP", "PLAYER_CONTROL_GAINED"}) do events:RegisterEvent(event) end

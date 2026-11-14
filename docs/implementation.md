@@ -2,7 +2,7 @@
 
 Status: approved for build, 2026-11-13. Scope: the full addon and the full Windows companion.
 Claude owns architecture, API, UX and copy. Codex implements. This brief closes the open questions in `docs/design.md`.
-Build all of it, in this order: transport copy and its tests; `UI.lua`, data, planner, triggers, coach section, settings; route; companion jobs, CLI adapters, validator, limits, cache; chat window; the two tools and the screenshot; setup, doctor, README, provenance, `docs/design.md`.
+Build all of it, in this order: transport copy and its tests; `UI.lua`, data, planner, triggers, coach section, settings; companion jobs, CLI adapters, validator, limits, cache; chat window; the two tools and the screenshot; setup, doctor, README, provenance, `docs/design.md`.
 
 ## 1. Decisions
 
@@ -11,7 +11,7 @@ Build all of it, in this order: transport copy and its tests; `UI.lua`, data, pl
 | Quest data | Runtime dependency on the **QuestieDB provider addon** (`Questie/QuestieDB`, global `LibQuestieDB`, contract 4). No Questie data in this repo. | It is a separate addon with a public API and it lists interface 16001. Its license has an "all rights reserved" doubt, so we do not bundle it. |
 | Transport | Copy the wow-ai transport (MIT) at commit `60165ca`. No new pixel protocol. | Its author reports live tests on the Forever client. |
 | Companion | Node 22.16 or later, JavaScript, `node:sqlite`. One runtime dependency: `@modelcontextprotocol/sdk`. JSON config, not TOML. | Same stack as wow-ai. No native build on Windows. |
-| AI | The player's own `claude` or `codex` CLI login. One provider. Model and effort for each job. | Decided in design. Flags verified, see section 8. |
+| AI | The player's own `claude` or `codex` CLI login. One provider. Model and effort for each job. | Decided in design. Flags verified, see section 7. |
 | Coach placement | A section below the quest tracker (sketch 01). The player can move it. | The sketch default, and the most quiet place. |
 | AI actions | None. The AI returns text only. | Red lines. |
 
@@ -28,7 +28,7 @@ Keep the layout that exists: root `package.json`, `scripts/`, `tests/`, `compani
 | `Data.lua` | new | The only file that calls `LibQuestieDB`, `QuestDB`, `NpcDB` |
 | `State.lua` | wow-ai `GameContext()` and `Try()` | Reads the game state. Each call is guarded |
 | `Planner.lua`, `Triggers.lua`, `Tips.lua` | new, plain Lua, no game calls | Chains, dungeon plan, triggers, tip templates |
-| `Route.lua` | wow-ai `Map.lua`: `Project`, `ContinentYards`, `Heading`, pins, navigator math | Route line and map pins |
+| `Geo.lua` | wow-ai `Map.lua`: map math | Map projection, continent lookup, distance and bearing |
 | `UI.lua` | new shared helper (section 5) | Every frame part comes from here |
 | `CoachSection.lua`, `ChatWindow.lua`, `Settings.lua`, `Slash.lua` | chat from the wow-ai transcript, bubbles, copy box, input | The two features |
 
@@ -91,7 +91,7 @@ Build a reverse index for prerequisites and breadcrumbs. Read race masks from `L
 | Tip title and body | Font `ObjectiveTrackerLineFont`. Title color `OBJECTIVE_TRACKER_COLOR["Header"]`, hover `["HeaderHighlight"]`. Body color `["Normal"]`. Block offset 20, line space 4, first block 10 below the header (the module defaults). |
 | Menu, buttons | `MenuUtil.CreateContextMenu`. `UIPanelButtonTemplate`, height 20, font `GameFontNormalSmall`. |
 | Panels (chat, copy box) | `BackdropTemplate` with `Interface\Tooltips\UI-Tooltip-Background` and `UI-Tooltip-Border`, edge 16, insets 4 (the wow-ai `BACKDROP`). |
-| Other | `UIPanelCloseButton`, `UIPanelScrollFrameTemplate`, `UICheckButtonTemplate`, `ChatFontNormal`, `GameFontNormal`, `GameFontDisableSmall`, `Interface\FriendsFrame\StatusIcon-Online`, `-Away`, `-DnD`, `-Offline`, `Interface\ChatFrame\UI-ChatIM-SizeGrabber-*`, `Interface\Minimap\MinimapArrow`, `GameTooltip`, `UISpecialFrames`. |
+| Other | `UIPanelCloseButton`, `UIPanelScrollFrameTemplate`, `UICheckButtonTemplate`, `ChatFontNormal`, `GameFontNormal`, `GameFontDisableSmall`, `Interface\FriendsFrame\StatusIcon-Online`, `-Away`, `-DnD`, `-Offline`, `Interface\ChatFrame\UI-ChatIM-SizeGrabber-*`, `GameTooltip`, `UISpecialFrames`. |
 | Settings | `Settings.RegisterVerticalLayoutCategory` and `Settings.RegisterAddOnCategory`. If they are missing, slash commands only. |
 
 **The section is not a tracker module.** Do not call `ObjectiveTrackerManager` or `AddModule`: addon code inside the tracker can taint its secure quest item buttons. `AzerothCoachSection` is our own frame (parent `UIParent`, strata `LOW`, width 260) that looks like a module.
@@ -106,8 +106,8 @@ The menu item `Dock to quest tracker` restores the default.
 **What the player sees.**
 - Header text `Coach`. One block: a title (1 line, 32 characters maximum) and a body (3 lines, 110 characters maximum).
 - No background, no border, no icon, no button, no sound, no chat line, no glow. A new tip fades in for 0.5 s. Do not play `AddAnim`.
-- No tip and no route: the section is hidden. Nothing is on the screen. The minimize button collapses the block; a new tip then shows as `Coach (1)`.
-- Left-click on the tip opens the chat about this tip. Right-click opens the menu: `Ask the coach`, `Show route` (gray when the tip has no position), `Dismiss`, `Pause 15 minutes`, `Pause 1 hour`, `Dock to quest tracker`, `Settings`.
+- No tip: the section is hidden. Nothing is on the screen. The minimize button collapses the block; a new tip then shows as `Coach (1)`.
+- Left-click on the tip opens the chat about this tip. Right-click opens the menu: `Ask the coach`, `Dismiss`, `Pause 15 minutes`, `Pause 1 hour`, `Dock to quest tracker`, `Settings`.
 - Hover shows a `GameTooltip` (`ANCHOR_LEFT`). Line 1: `From the quest data` or `Written by Claude from the quest data`. Line 2: `Click: ask the coach. Right-click: options.`
 - A question tip adds one row of 3 buttons, 76×20 each: `Yes` `No` `Later`. Only the dungeon trigger asks, one time for each dungeon. The addon saves the answer.
 - A tip leaves after 10 minutes with a 1 s fade (setting: 5, 10, never). It stays while the mouse is on it.
@@ -148,16 +148,9 @@ Frame `AzerothCoachChat`: `UI.Panel`, 420×360, minimum 320×240, maximum 640×6
 | No source used | Gray line under the answer: `No source. Check this answer.` |
 | Wowhead blocked | Gray line: `Wowhead is not available now. The coach used the wiki.` |
 
-Put the provider name of the reply (`Claude` or `Codex`) in these strings. Slash commands: `/coach` (open or close), `/coach <text>`, `/coach pause [minutes]`, `/coach resume`, `/coach dock`, `/coach route stop`, `/coach status`, `/coach doctor`, `/coach ping`.
+Put the provider name of the reply (`Claude` or `Codex`) in these strings. Slash commands: `/coach` (open or close), `/coach <text>`, `/coach pause [minutes]`, `/coach resume`, `/coach dock`, `/coach status`, `/coach doctor`, `/coach ping`.
 
-## 7. Route line
-
-- Positions come from QuestieDB only, through `Planner`. The AI never gives a position.
-- One route at a time. It is one line in the coach section, below the tip: a 16×16 `MinimapArrow` texture, then `210 yd · Marshal Dughan`. Turn the arrow with `SetRotation(bearing − GetPlayerFacing())`, 10 times each second, only while the line shows.
-- Arrival is 12 yards. Then the next step starts, or the line shows `You are here.` for 5 s and clears. No position (instance, missing API): `No position here.` Right-click on the line: `Stop route`.
-- The world map shows numbered pins (wow-ai pin code). Nothing moves or targets for the player.
-
-## 8. Companion
+## 7. Companion
 
 | Job | Claude default | Codex default | Timeout | Limit each hour | Tools |
 |---|---|---|---|---|---|
@@ -210,7 +203,7 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 4. Delete the image after success or failure. At startup, delete owned leftover run folders after the lock is acquired.
    Do not follow directory links. No background screenshot capture exists.
 
-## 9. Tests
+## 8. Tests
 
 `npm test` runs with no game (Node test runner, Lua in `fengari`, the wow-ai `wow_stub.lua`):
 - **From wow-ai, adapted:** codec round trip, strip records and dedup, slot file escape, agent arguments and stream parsers (recorded `claude` and `codex` streams), one full addon session (login, hello, trigger, strip, slot reply, tip on screen).
@@ -221,7 +214,7 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 - **Red lines (static):** the repo has no `SendInput`, `keybd_event`, `mouse_event`, `PostMessage`, `ReadProcessMemory`, `OpenProcess`. The addon has no `CreateMacro`, `EditMacro`, `RunMacroText`, `SecureActionButtonTemplate`.
 - **Sources and cache:** URL by numeric ID only, a cache hit means no fetch, expiry, the 24-hour stop, the user agent, rate limits with a fake clock.
 
-## 10. Windows install and doctor
+## 9. Windows install and doctor
 
 1. Install Node 22.16 or later. Sign in to `claude` or `codex` in a terminal.
 2. Install the QuestieDB addon from its release page into `_forever_\Interface\AddOns\QuestieDB`.
@@ -229,19 +222,19 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 4. Close the game fully and start it again. Use windowed or borderless mode.
 5. `npm start`. Then `npm run doctor`, and `/coach doctor` in the game.
 
-`npm run doctor` prints `PASS`, `FAIL` or `SKIP`, with the repair, for: Node and `node:sqlite`; the client folder; the addon, the slots and the signal files; the QuestieDB folder; the CLI path, version and login (one `PONG` run for each job model); each flag of section 8; the game window and one decoded `/coach ping`; fullscreen, HDR and display scale; the cache folder; one wiki call.
+`npm run doctor` prints `PASS`, `FAIL` or `SKIP`, with the repair, for: Node and `node:sqlite`; the client folder; the addon, the slots and the signal files; the QuestieDB folder; the CLI path, version and login (one `PONG` run for each job model); each flag of section 7; the game window and one decoded `/coach ping`; fullscreen, HDR and display scale; the cache folder; one wiki call.
 `/coach doctor` prints the QuestieDB contract, each guarded game API (found or missing), the sound self-test, the free slots, and the presence state. It writes the same lines to a 300-line log in SavedVariables.
 
-## 11. What is not tested
+## 10. What is not tested
 
 - No part of this ran in the Forever client. The first in-game session tests the transport copy, the tracker dock, and each state.
 - The Blizzard templates were read in the `forever` branch of `Gethe/wow-ui-source` (commit `bebcb6b`), not in the client.
-- These APIs are not verified in the client: completed quests, player facing, trivial quest range, and the quest log maximum.
+- These APIs are not verified in the client: completed quests, trivial quest range, and the quest log maximum.
   External QuestieDB map files pass the offline adapter test. Their live client behavior still needs a check.
 - QuestieDB says its Forever content is not complete. Its own Forever checklist is still open.
 - The CLI flags ran on Linux only. The image path for Claude (`--tools Read`) did not run. HDR, exclusive fullscreen, and display scale above 100% are not tested.
 
-## 12. Key risks
+## 11. Key risks
 
 1. **The strip is visible.** It covers up to 800×192 px at the top-left corner. Normal capture should clear it quickly.
    A failed ordinary request can show three 40 s attempts. A hello has one 10 s attempt. Nothing sends in combat.
@@ -253,7 +246,7 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 7. **Saved data wipe on this client.** Restore chat only when the session token survives.
    A full SavedVariables wipe creates a new token. It cannot restore another character's history or saved dungeon answers.
 
-## 13. Sources
+## 12. Sources
 
 - `chelinho139/wow-ai` at `60165ca` (GitHub `HEAD` on 2026-11-13): `docs/ARCHITECTURE.md`, `Codec.lua`, `WoWAI.lua`, `Map.lua`, `bridge/*.js`, `capture.ps1`, `tests/`.
 - `Gethe/wow-ui-source`, branch `forever`, `bebcb6b`: `Blizzard_ObjectiveTracker`, `Blizzard_SharedXML`, `Blizzard_Menu`, `Blizzard_Settings_Shared`.

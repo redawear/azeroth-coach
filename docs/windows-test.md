@@ -22,17 +22,16 @@ Add `--capture` to test the foreground game. These checks can use your CLI plan.
 Check the process name, client folder, foreground window, HDR, scale, and the top-left corner.
 Do not change the codec to work around a window-selection error.
 
-## Coach and route
+## Coach
 
 1. Check the coach below the quest tracker. It must have no box, glow, sound, or chat announcement.
 2. Click the tip. Check the chat context and the title of the tip.
-3. Right-click. Check the menu. Disable `Show route` when there is no position.
+3. Right-click. Check the menu. It must have no navigation option.
 4. Shift-drag the header. Type `/reload`. Check the saved position. Use `/coach dock` to reset it.
 5. Collapse the coach. A new tip must show `Coach (1)`.
 6. Make little room below the quest tracker. Only the header must show.
-7. Check a route from a real quest giver. Compare its numbered map pin with QuestieDB.
-8. Walk to the position. Check arrival at 12 yards and the final `You are here.` line.
-9. Stop the route from its menu and with `/coach route stop`.
+7. Check that the coach shows no arrow, distance line, or map pin.
+8. Dismiss the tip. The whole coach section must hide.
 
 ## Triggers and hide rules
 

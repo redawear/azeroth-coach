@@ -7,8 +7,8 @@ The full build is ready for its first Windows test. Automated checks pass on Lin
 No part has run in the Forever client yet.
 
 The coach shows one quiet tip below the quest tracker. It has no box or sound.
-It hides in combat and when no tip or route exists. Shift-drag the header to move it.
-Click a tip to ask about it. Right-click for routes, pause, and other options.
+It hides in combat and when no tip exists. Shift-drag the header to move it.
+Click a tip to ask about it. Right-click for pause and other options.
 
 The addon works without AI. The separate **QuestieDB** addon supplies the quest facts.
 The Windows companion adds Claude or Codex through your own CLI login.
@@ -117,7 +117,6 @@ CLI flags and screenshot support still need a Windows test.
 | `/coach <question>` | Ask a question |
 | `/coach pause [minutes]` / `resume` | Pause or resume tips |
 | `/coach dock` | Put the coach below the quest tracker |
-| `/coach route stop` | Stop the route |
 | `/coach on` / `off` | Enable or disable the coach |
 | `/coach interval 5` | Set the pause between tips: 5, 10, 20, or 30 minutes |
 | `/coach expire 10` | Remove a tip after 5 or 10 minutes, or `never` |
@@ -127,7 +126,7 @@ CLI flags and screenshot support still need a Windows test.
 | `/coach ping` | Test the link without an AI request |
 
 Assign the chat key in the game's key bindings. Dungeon tips have `Yes`, `No`, and `Later` answers.
-Routes use positions from QuestieDB. They never use positions from the AI.
+Quest positions from QuestieDB help put the nearest quest first.
 
 ## Sources, images, and limits
 

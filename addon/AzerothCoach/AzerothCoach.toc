@@ -10,11 +10,11 @@ Codec.lua
 Inbox.lua
 Data.lua
 State.lua
+Geo.lua
 Triggers.lua
 Tips.lua
 UI.lua
 Link.lua
-Route.lua
 CoachSection.lua
 ChatWindow.lua
 Settings.lua
