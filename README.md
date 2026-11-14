@@ -1,7 +1,7 @@
 # Azeroth Coach
 
 A quest coach and an AI chat for **World of Warcraft: Forever**.
-Private build for Reda and friends. Target: client 1.60.1, interface 16001.
+A test build for Reda and friends. Target: client 1.60.1, interface 16001.
 
 The full build is ready for its first Windows test. Automated checks pass on Linux.
 No part has run in the Forever client yet.
@@ -14,7 +14,27 @@ The addon works without AI. The separate **QuestieDB** addon supplies the quest 
 The Windows companion adds Claude or Codex through your own CLI login.
 It uses one provider at a time. It never sends game input or reads game memory.
 
-## Install on Windows
+## Install
+
+1. Download `AzerothCoach-Setup.exe` from the [releases](https://github.com/redawear/azeroth-coach/releases), or use the file from Reda.
+2. Close World of Warcraft. Run the installer and choose the `_forever_` folder.
+3. Choose Claude, Codex, or No AI. The installer downloads QuestieDB and checks its API contract.
+4. Restart World of Warcraft: Forever. Type `/coach`.
+
+The installer includes Node.js. You do not need git or a terminal to install the coach.
+For AI, install Claude Code or Codex first. Use your own CLI sign-in.
+No AI gives coach tips from the quest data.
+
+The file has no code signature. Windows SmartScreen shows **Windows protected your PC**.
+Click **More info**, then **Run anyway**.
+Run a newer installer to update. It keeps your settings, cache, and chat history.
+
+The Start menu has **Restart Azeroth Coach**, **Edit settings**, **Open log folder**, and **Uninstall Azeroth Coach**.
+The companion has no console window or tray icon. Use `/coach doctor` to check the link.
+Uninstall keeps QuestieDB. It also keeps your settings and chat history unless you select their delete checkbox.
+See the [Windows test guide](docs/windows-test.md) for the first game session.
+
+## Developer setup
 
 1. Install [Node.js](https://nodejs.org/) 22.16 or later. Node 24 is recommended.
 2. Install [QuestieDB](https://github.com/Questie/QuestieDB/releases) in the Forever AddOns folder.
@@ -29,7 +49,8 @@ It uses one provider at a time. It never sends game input or reads game memory.
 
 5. Close the game fully. Start it again in windowed or borderless mode.
 6. Run `npm start`. Keep the game in the foreground and its top-left corner visible.
-7. Run `/coach doctor`, then `/coach ping` in the game. Open the chat with `/coach`.
+7. Run `npm run doctor`, then `npm run doctor -- --live` to check the CLI sign-in.
+8. Run `/coach doctor`, then `/coach ping` in the game. Open the chat with `/coach`.
 
 Setup asks for the client path and provider. You can also pass them:
 
@@ -37,15 +58,27 @@ Setup asks for the client path and provider. You can also pass them:
 npm run setup -- --client "C:\Games\World of Warcraft\_forever_" --provider claude
 ```
 
-Setup creates 200 reply addons. Leave them enabled. The game indexes them only at launch.
+Use `--provider none` for tips without AI. Use `--no-slots` to skip the reply addons.
+Both `--client` and `--provider` make setup run without a prompt.
+`--result <file>` writes a JSON result. `--detect` prints the client folders and CLI detection results.
+`--check` runs the short finish check. It returns `ready`, `ai_not_signed_in`, or `questiedb_failed`.
+
+Setup creates 200 reply addons for AI. Leave them enabled. The game indexes them only at launch.
 When all slots are used, type `/reload`. The companion creates no new addon folders during play.
-The [Windows test guide](docs/windows-test.md) covers the first session and error checks.
+
+To build the Windows installer, run `scripts/build-installer.ps1` on Windows with Node.js and npm installed.
+The build uses Node.js 24.22.2 win-x64. It checks the official SHA256 before it patches the GUI copy.
+The Check workflow builds and tests the installer on Windows. Run it manually with `workflow_dispatch` if needed.
+Its `AzerothCoach-Setup` artifact holds `AzerothCoach-Setup.exe`. Tags that start with `v` also get a draft release.
+For a silent install, pass `/VERYSILENT /SUPPRESSMSGBOXES /CLIENT="<path>" /PROVIDER=none`.
+`/SKIPQUESTIEDB=1` skips the download for CI tests. It leaves the quest data check in the failed state.
+Use this option only with a test client.
 
 ## Settings
 
 Runtime files live in `%LOCALAPPDATA%\AzerothCoach\`. The logins stay in the CLIs.
 The folder holds `config.json`, `cache.sqlite`, `state.json`, and the companion log.
-Setup also makes a `Start Azeroth Coach.cmd` file there.
+Developer setup also makes a `Start Azeroth Coach.cmd` file there.
 Do not put credentials in this repository.
 
 Edit `config.json` to change the provider, model, effort, or limits. Restart after a provider change.

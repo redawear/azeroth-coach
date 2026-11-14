@@ -5,7 +5,7 @@ function captureArgs(cfg) {
   return ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'capture.ps1'), '-ProcessName', cfg.capture.process, '-ClientFolder', cfg.capture.clientFolder, '-IntervalMs', String(cfg.capture.intervalMs)];
 }
 class Capture {
-  constructor(cfg, message, log = () => {}) { this.cfg = cfg; this.message = message; this.log = log; this.lastClear = 0; this.stopped = false; }
+  constructor(cfg, message, log = () => {}) { this.cfg = cfg; this.message = message; this.log = log; this.lastClear = 0; this.stopped = false; this.shots = new Set(); }
   start() {
     if (this.stopped) return;
     this.child = spawn('powershell.exe', captureArgs(this.cfg), { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -22,21 +22,27 @@ class Capture {
     this.child.on('close', () => { if (!this.stopped) this.timer = setTimeout(() => this.start(), 3000); });
   }
   async shot(job) {
+    if (this.stopped) return null;
     const started = Date.now();
-    while (this.lastClear <= (job.receivedAt || started) && Date.now() - started < 8000) await new Promise(resolve => setTimeout(resolve, 50));
-    if (this.lastClear <= (job.receivedAt || started)) return null;
+    while (!this.stopped && this.lastClear <= (job.receivedAt || started) && Date.now() - started < 8000) await new Promise(resolve => setTimeout(resolve, 50));
+    if (this.stopped || this.lastClear <= (job.receivedAt || started)) return null;
     await new Promise(resolve => setTimeout(resolve, 300));
+    if (this.stopped) return null;
     const fs = require('node:fs'); const crypto = require('node:crypto');
     const folder = path.join(this.cfg.runtime, 'shots'); fs.mkdirSync(folder, { recursive: true });
     const file = path.join(folder, crypto.randomUUID() + '.png');
     return new Promise(resolve => {
       const child = spawn('powershell.exe', [...captureArgs(this.cfg), '-Shot', file], { windowsHide: true, stdio: 'ignore' });
+      this.shots.add(child); child.once('close', () => this.shots.delete(child));
       let finished = false;
       const finish = ok => { if (finished) return; finished = true; clearTimeout(timer); if (!ok) fs.rmSync(file, { force: true }); resolve(ok ? file : null); };
       const timer = setTimeout(() => { child.kill(); finish(false); }, 10000);
       child.on('error', () => finish(false)); child.on('close', code => finish(code === 0 && fs.existsSync(file)));
     });
   }
-  stop() { this.stopped = true; clearTimeout(this.timer); if (this.child) this.child.kill(); }
+  async stop() {
+    this.stopped = true; clearTimeout(this.timer);
+    await Promise.all([this.child, ...this.shots].filter(child => child && child.exitCode === null).map(child => new Promise(resolve => { child.once('close', resolve); child.kill(); })));
+  }
 }
 module.exports = { Capture, captureArgs };

@@ -4,6 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawn, spawnSync } = require('node:child_process');
+const activeChildren = new Set();
+async function stopRuns() {
+  await Promise.all([...activeChildren].map(child => new Promise(resolve => {
+    child.once('close', resolve); killTree(child);
+  })));
+}
 function resolveCommand(provider, configured) {
   if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.');
   const exists = p => { try { return fs.statSync(p).isFile(); } catch { return false; } };
@@ -86,9 +92,10 @@ function redact(text) {
     .replace(/((?:api[_-]?key|(?:access[_-]?)?token|authorization|password)["' ]*[:=]["' ]*)[^\s,"'}]+/gi, '$1[redacted]')
     .replace(/\bsk-[A-Za-z0-9_-]{16,}/g, '[redacted]').slice(-1200);
 }
-function inspectCodex(command) {
+function inspectCodex(command, timeout = 15000) {
+  const deadline = Date.now() + timeout;
   const call = args => {
-    const result = spawnSync(command.file, [...command.args, ...args], { encoding: 'utf8', windowsHide: true, timeout: 15000, maxBuffer: 2_000_000 });
+    const result = spawnSync(command.file, [...command.args, ...args], { encoding: 'utf8', windowsHide: true, timeout: Math.max(1, deadline - Date.now()), maxBuffer: 2_000_000 });
     if (result.status !== 0) throw Object.assign(new Error('Cannot verify the Codex tool policy. Run npm run doctor.'), { code: 'failed' });
     return result.stdout;
   };
@@ -113,12 +120,14 @@ function inspectCodex(command) {
 }
 async function run(cfg, job, files, prompt, progress = () => {}) {
   const command = resolveCommand(cfg.provider, cfg.cliPath);
-  const policy = cfg.provider === 'codex' ? inspectCodex(command) : { servers: [], features: [] };
+  const policy = cfg.provider === 'codex' ? inspectCodex(command, cfg.policyTimeoutMs) : { servers: [], features: [] };
   const args = [...command.args, ...argsFor(cfg.provider, cfg, job, files, policy.servers, policy.features)];
   return new Promise((resolve, reject) => {
     const env = { ...process.env }; delete env.CLAUDECODE;
     for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete env[key];
     const child = spawn(command.file, args, { cwd: files.cwd, env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
+    activeChildren.add(child);
+    child.once('close', () => activeChildren.delete(child));
     const parse = parser(cfg.provider); let buffer = '', stderr = '', result, bytes = 0, stopped = false;
     // Reject only after the child exits. On Windows, a live child locks its work folder, and the cleanup fails.
     const stop = error => {
@@ -144,4 +153,4 @@ async function run(cfg, job, files, prompt, progress = () => {}) {
     child.stdin.on('error', () => {}); child.stdin.end(prompt);
   });
 }
-module.exports = { resolveCommand, argsFor, parser, run, classify, killTree, inspectCodex, redact };
+module.exports = { resolveCommand, argsFor, parser, run, classify, killTree, inspectCodex, redact, stopRuns };

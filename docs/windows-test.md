@@ -5,17 +5,20 @@ Save the first Lua error and the failing step. Fix that error before the next st
 
 ## Install and start
 
-1. Follow the README. Fully restart the game after setup.
+1. Download `AzerothCoach-Setup.exe`. Close the game, run the installer, then fully restart the game.
 2. Enable AzerothCoach, QuestieDB, and the 200 reply slots.
 3. Use windowed or borderless mode. Start with SDR and 100% Windows display scale.
-4. Run `npm run doctor`. Fix each `FAIL` line.
-5. Run `npm run doctor -- --live`. Each configured model must return `PONG`.
-6. Start `npm start`. Keep the game in the foreground.
+4. Check the installer finish page. Fix any quest data or AI sign-in error.
+5. For AI, select **Restart Azeroth Coach** in the Start menu. No window must appear.
+6. Keep the game in the foreground. Check the startup checkbox after a Windows sign-in.
 7. Run `/coach doctor`. Save its API checks. Check the QuestieDB contract and sound self-test.
 8. Run `/coach ping`. Expect `PONG`, with no AI request.
 9. Ask about an active quest. Expect a reply with the provider and source lines.
 
-If the strip stays visible, stop the companion. Run `npm run doctor -- --capture` and type `/coach ping`.
+If the strip stays visible, stop the companion. Use the developer doctor with `--capture`, then type `/coach ping`.
+The installer includes `node.exe` and `scripts\doctor.js` in `%LOCALAPPDATA%\Programs\AzerothCoach\`.
+Run that Node file with the doctor script in a terminal. Add `--live` to test each model.
+Add `--capture` to test the foreground game. These checks can use your CLI plan.
 Check the process name, client folder, foreground window, HDR, scale, and the top-left corner.
 Do not change the codec to work around a window-selection error.
 
