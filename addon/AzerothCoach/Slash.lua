@@ -2,6 +2,7 @@ local AC = AzerothCoach
 function AC.Doctor()
     AC.Print(AC.Data.ready and "QuestieDB contract 4: ready." or AC.Data.error or "Quest data is loading.")
     AC.Print("Link: " .. AC.Link.Status() .. "; sound signals: " .. tostring(AC.Link.signals) .. "; free slots: " .. AC.Link.free)
+    AC.Print("Slots used this session: " .. (200 - AC.Link.free))
     local keys = {}; for key in pairs(AC.State.api) do keys[#keys + 1] = key end; table.sort(keys)
     for _, key in ipairs(keys) do AC.Print(key .. ": " .. AC.State.api[key]) end
 end

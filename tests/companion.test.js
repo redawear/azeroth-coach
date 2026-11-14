@@ -228,3 +228,22 @@ test('reload fallback reads each changed outbox once and cannot switch the activ
   write('two', 2); read(); assert.equal(calls, 1); assert.equal(current, 'one');
   write('one', 2); read(); assert.equal(calls, 2);
 });
+test('failed and unknown job errors use the player repair text', () => {
+  const { errorText } = require('../companion/jobs');
+  const expected = 'The companion could not finish this question. Ask again. If it fails again, type /coach doctor.';
+  for (const provider of ['claude', 'codex']) {
+    const cfg = { ...defaults, provider };
+    assert.equal(errorText('failed', cfg, job), expected);
+    assert.equal(errorText('unknown', cfg, job), expected);
+  }
+});
+test('hello completion has its own log line without a daily use table', t => {
+  const { completionLine } = require('../companion/main');
+  const cache = db(t); const usage = cache.usage();
+  assert.deepEqual(usage, []);
+  assert.equal(completionLine({ ...job, trigger: 'hello' }, { status: 'done' }, usage), 'hello: done');
+  assert.deepEqual(cache.usage(), []);
+  cache.reserve('chat', 20);
+  assert.match(completionLine(job, { status: 'done' }, cache.usage()), /^chat: done; daily use \[.+\]$/);
+  assert.equal(completionLine({ ...job, trigger: 'hello' }, { status: 'done' }, cache.usage()), 'hello: done');
+});

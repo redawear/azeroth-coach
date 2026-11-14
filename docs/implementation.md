@@ -59,7 +59,12 @@ It expires after 20 s and never retries. `/coach ping` and chat open can send an
 Chat and deep requests keep the reload outbox. Hello and coach requests cannot replace it.
 Local capture failures and timeouts clear their matching outbox. A failed question cannot replay at each login.
 With trusted signals, a request polls once after 5 s, then waits for its reply signal.
-Without trusted signals, ordinary requests poll every 15 s. Combat hides the strip and extends the request deadline.
+Without trusted signals, ordinary requests first poll after 5 s.
+After an empty poll, they wait 15 s, then 30 s, then 60 s. Later waits stay at 60 s.
+A working reply uses the same waits. This limits slot use while the answer is not ready.
+One chat question uses at most 5 slots within 180 s. One deep question uses at most 8 slots within 360 s.
+These limits exclude hello requests and other questions. A shared poll can read replies for several questions.
+Combat hides the strip and extends the request deadline. It also extends each poll wait.
 An old bundle timestamp affects presence only. It cannot discard a matching answer after a long fight.
 
 ## 4. Addon logic
@@ -132,14 +137,14 @@ Frame `AzerothCoachChat`: `UI.Panel`, 420×360, minimum 320×240, maximum 640×6
 | Empty | `Ask about your quests, your zone, or your next dungeon.` |
 | Working | Bubble `Working · 6 s`, then tool lines: `Reads Warcraft Wiki`, `Reads Wowhead quest 123` |
 | Online, stale, down | Dot green, yellow, red. Text `Claude · online`, `Claude · no signal`, `Not connected` |
-| Companion down | `Send` is gray. `The companion is not connected. Start it on this PC with "npm start". Tips still come from the quest data.` |
+| Companion down | `Send` is gray. `The companion is not connected. Open the Start menu and click Restart Azeroth Coach. Tips still come from the quest data.` |
 | No QuestieDB, or too old | Coach tip, one time: `Quest data not found. Install the QuestieDB addon, then restart the game.` or `QuestieDB is too old for the coach. Update QuestieDB.` Context line: `No quest data` |
 | `rate` | `Limit reached: 20 questions each hour. Try again in 12 min.` |
 | `auth` | `Claude is not signed in on this PC. Run "claude" in a terminal, sign in, then ask again.` |
 | `plan` | `Your Claude plan reached its limit. Tips now come from the quest data.` |
 | `timeout` | `No answer after 120 s. Ask again.` |
 | `invalid` | `The answer did not match the quest data. Ask again.` |
-| `failed` | `The companion could not finish this question. Run "npm run doctor".` |
+| `failed` | `The companion could not finish this question. Ask again. If it fails again, type /coach doctor.` |
 | In combat | `You are in combat. Ask again after the fight.` |
 | No ack after 3 tries | `The companion cannot see the game window. Use windowed or borderless mode. Keep the top-left corner visible.` |
 | Slots used up | `Reply slots are used up. Type /reload to continue.` |
@@ -230,7 +235,9 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 5. `npm start`. Then `npm run doctor`, and `/coach doctor` in the game.
 
 `npm run doctor` prints `PASS`, `FAIL` or `SKIP`, with the repair, for: Node and `node:sqlite`; the client folder; the addon, the slots and the signal files; the QuestieDB folder; the CLI path, version and login (one `PONG` run for each job model); each flag of section 8; the game window and one decoded `/coach ping`; fullscreen, HDR and display scale; the cache folder; one wiki call.
-`/coach doctor` prints the QuestieDB contract, each guarded game API (found or missing), the sound self-test, the free slots, and the presence state. It writes the same lines to a 300-line log in SavedVariables.
+`/coach doctor` prints the QuestieDB contract, each guarded game API (found or missing), and the sound self-test.
+It also prints the free slots, the slots used this session, and the presence state.
+It writes the same lines to a 300-line log in SavedVariables.
 
 ## 11. What is not tested
 

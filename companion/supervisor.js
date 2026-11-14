@@ -6,6 +6,16 @@ function captureArgs(cfg) {
 }
 class Capture {
   constructor(cfg, message, log = () => {}) { this.cfg = cfg; this.message = message; this.log = log; this.lastClear = 0; this.stopped = false; this.shots = new Set(); }
+  receive(line) {
+    try {
+      const msg = JSON.parse(line);
+      if (msg.clear) this.lastClear = Date.now();
+      else if (msg.text) this.message(msg.text);
+      else if (msg.info) {
+        if (msg.info !== this.lastInfo) { this.lastInfo = msg.info; this.log(msg.info); }
+      } else if (msg.warn) this.log(msg.warn);
+    } catch {}
+  }
   start() {
     if (this.stopped) return;
     this.child = spawn('powershell.exe', captureArgs(this.cfg), { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -13,12 +23,10 @@ class Capture {
     this.child.stdout.on('data', data => {
       buffer += data.toString(); const lines = buffer.split('\n'); buffer = lines.pop();
       if (buffer.length > 100000) buffer = '';
-      for (const line of lines) {
-        try { const msg = JSON.parse(line); if (msg.clear) this.lastClear = Date.now(); else if (msg.text) this.message(msg.text); else if (msg.info || msg.warn) this.log(msg.info || msg.warn); } catch {}
-      }
+      for (const line of lines) this.receive(line);
     });
-    this.child.stderr.on('data', () => this.log('Capture error. Run npm run doctor.'));
-    this.child.on('error', () => this.log('Cannot start PowerShell. Run npm run doctor.'));
+    this.child.stderr.on('data', () => this.log('Capture error. Restart Azeroth Coach from the Start menu.'));
+    this.child.on('error', () => this.log('Cannot start PowerShell. Restart Azeroth Coach from the Start menu.'));
     this.child.on('close', () => { if (!this.stopped) this.timer = setTimeout(() => this.start(), 3000); });
   }
   async shot(job) {

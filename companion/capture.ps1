@@ -105,6 +105,7 @@ $w = $Cells * $Cell
 $h = $MaxRows * $Cell
 while ($true) {
   if (-not $proc -or $proc.HasExited) {
+    if ($proc) { Emit @{ info = "game window lost" }; $proc = $null }
     # Retail's exe is also Wow.exe: skip a game running from another client folder.
     $proc = Get-Process $ProcessName -ErrorAction SilentlyContinue | Where-Object {
       $_.MainWindowHandle -ne 0 -and (-not $ClientFolder -or ($_.Path -and (Split-Path -Leaf (Split-Path -Parent $_.Path)) -eq $ClientFolder))

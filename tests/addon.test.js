@@ -224,3 +224,98 @@ test('state reads each distinct reputation and spell restriction once', () => {
   v.run('repReads=0;spellReads=0;C_Reputation={GetFactionDataByID=function() repReads=repReads+1;return {currentStanding=150} end};IsPlayerSpell=function() spellReads=spellReads+1;return true end;AzerothCoach.State.Read()');
   assert.equal(v.value('repReads'), '1'); assert.equal(v.value('spellReads'), '1');
 });
+test('offline chat gives the Start menu repair and slot failures give the installer repair', () => {
+  const v = addon();
+  v.run('AzerothCoach.ChatWindow.Open(); offline="";for _,row in ipairs(AzerothCoach.ChatWindow.rows) do if row.text.text:find("not connected",1,true) then offline=row.text.text end end');
+  assert.equal(v.value('offline'), 'The companion is not connected. Open the Start menu and click Restart Azeroth Coach. Tips still come from the quest data.');
+  v.run('AzerothCoach.Log=function(text) failure=text end; C_AddOns.LoadAddOn=function() return nil,"MISSING" end; AzerothCoach.Link.Poll()');
+  assert.equal(v.value('failure'), 'Cannot load AzerothCoach_S001. Run the Azeroth Coach installer again, then restart the game.');
+  assert.equal(v.value('AzerothCoach.Link.free'), '200');
+});
+for (const [job, deadline, expected] of [
+  ['chat', 180, [5, 20, 50, 110, 170]],
+  ['deep', 360, [5, 20, 50, 110, 170, 230, 290, 350]]
+]) test(`fallback ${job} uses at most ${expected.length} slots within ${deadline} seconds`, () => {
+  const v = addon();
+  v.run(`
+    STUB.timers={}; AzerothCoach.Link.pending={}; AzerothCoach.Link.queue={}
+    polls={}; started=GetTime(); id=AzerothCoach.Link.Send(${lua(job)},"","slow",function(reply) result=reply end)
+    STUB.onLoad=function()
+        polls[#polls+1]=GetTime()-started
+        if #polls==1 then AzerothCoach_SlotData={session=AzerothCoach.db.session,now=time(),replies={{id=id,chat="chat",status="working",text="Working"}}} end
+    end
+    for second=0,${deadline} do STUB.now=started+second; AzerothCoach.Link.Tick() end
+  `);
+  assert.deepEqual(JSON.parse(v.value('AzerothCoach.State.JSON(polls)')), expected);
+  assert.equal(v.value('AzerothCoach.Link.pending[id] ~= nil'), 'true');
+  v.run(`STUB.now=started+${deadline + 61}; AzerothCoach.Link.Tick()`);
+  assert.equal(v.value('result.code'), 'timeout');
+  assert.equal(v.value('AzerothCoach.Link.free'), String(200 - expected.length));
+  assert.equal(v.value('AzerothCoach.db.outbox'), 'nil');
+  v.run('lines={};AzerothCoach.Print=function(text) lines[#lines+1]=text end; AzerothCoach.Doctor(); doctor=table.concat(lines,"\\n")');
+  assert.match(v.value('doctor'), new RegExp('Slots used this session: ' + expected.length + '(?:\\n|$)'));
+  assert.match(v.value('doctor'), new RegExp('free slots: ' + (200 - expected.length)));
+  const docs = fs.readFileSync(path.join(__dirname, '../docs/implementation.md'), 'utf8');
+  assert.ok(docs.includes(`One ${job} question uses at most ${expected.length} slots within ${deadline} s.`));
+});
+test('fallback backoff accepts a late reply once and stops polling', () => {
+  const v = addon();
+  v.run(`
+    STUB.timers={};AzerothCoach.Link.pending={};AzerothCoach.Link.queue={};calls=0;started=GetTime()
+    id=AzerothCoach.Link.Send("chat","","slow",function(reply) calls=calls+1;result=reply end)
+    STUB.onLoad=function()
+        AzerothCoach_SlotData={session=AzerothCoach.db.session,now=time(),replies={{id=id,chat="chat",status=GetTime()-started>=110 and "done" or "working",text="Answer"}}}
+    end
+    for second=0,240 do STUB.now=started+second;AzerothCoach.Link.Tick() end
+  `);
+  assert.equal(v.value('result.text'), 'Answer'); assert.equal(v.value('calls'), '1');
+  assert.equal(v.value('AzerothCoach.Link.free'), '196');
+});
+test('trusted signals poll once, then wait for a fresh reply signal', () => {
+  const v = addon(false, `STUB.sounds["Interface\\\\AddOns\\\\AzerothCoach\\\\ctl\\\\valid.wav"]=true`);
+  v.run(`
+    STUB.timers={};AzerothCoach.Link.pending={};AzerothCoach.Link.queue={};started=GetTime()
+    id=AzerothCoach.Link.Send("chat","","slow",function(reply) result=reply end)
+    STUB.onLoad=function() AzerothCoach_SlotData={session=AzerothCoach.db.session,now=time(),replies={{id=id,chat="chat",status="working"}}} end
+    for second=0,100 do STUB.now=started+second;AzerothCoach.Link.Tick() end
+  `);
+  assert.equal(v.value('AzerothCoach.Link.free'), '199');
+  v.run(`
+    STUB.onLoad=function() AzerothCoach_SlotData={session=AzerothCoach.db.session,now=time(),replies={{id=id,chat="chat",status="done",text="Signal answer"}}} end
+    STUB.sounds[string.format("Interface\\\\AddOns\\\\AzerothCoach\\\\sig\\\\%03d.wav",((id-1)%200)+1)]=true
+    AzerothCoach.Link.Tick()
+  `);
+  assert.equal(v.value('result.text'), 'Signal answer');
+  assert.equal(v.value('AzerothCoach.Link.free'), '198');
+});
+test('a reused reply signal keeps the fallback backoff', () => {
+  const v = addon(false, `STUB.sounds["Interface\\\\AddOns\\\\AzerothCoach\\\\ctl\\\\valid.wav"]=true`);
+  v.run(`
+    STUB.timers={};AzerothCoach.Link.pending={};AzerothCoach.Link.queue={};started=GetTime();polls={}
+    STUB.sounds[string.format("Interface\\\\AddOns\\\\AzerothCoach\\\\sig\\\\%03d.wav",(AzerothCoach.db.nextId%200)+1)]=true
+    id=AzerothCoach.Link.Send("chat","","slow")
+    STUB.onLoad=function() polls[#polls+1]=GetTime()-started;AzerothCoach_SlotData={session=AzerothCoach.db.session,now=time(),replies={{id=id,chat="chat",status="working"}}} end
+    for second=0,180 do STUB.now=started+second;AzerothCoach.Link.Tick() end
+  `);
+  assert.equal(v.value('AzerothCoach.Link.pending[id].sigAtStart'), 'true');
+  assert.deepEqual(JSON.parse(v.value('AzerothCoach.State.JSON(polls)')), [5, 20, 50, 110, 170]);
+});
+test('combat extends fallback waits and several pending questions share a slot read', () => {
+  const v = addon();
+  v.run(`
+    STUB.timers={};AzerothCoach.Link.pending={};AzerothCoach.Link.queue={};started=GetTime();polls={}
+    id=AzerothCoach.Link.Send("chat","","slow");other=AzerothCoach.Link.Send("coach","","tip")
+    STUB.onLoad=function()
+        polls[#polls+1]=GetTime()-started
+        AzerothCoach_SlotData={session=AzerothCoach.db.session,now=time(),replies={{id=id,chat="chat",status="working"},{id=other,chat="coach",status="working"}}}
+    end
+    STUB.now=started+5;AzerothCoach.Link.Tick()
+    STUB.now=started+10;STUB.combat=true;AzerothCoach.Link.Tick()
+    STUB.now=started+110;AzerothCoach.Link.Tick();STUB.combat=false;AzerothCoach.Link.Tick()
+    STUB.now=started+119;AzerothCoach.Link.Tick()
+  `);
+  assert.equal(v.value('AzerothCoach.Link.free'), '199');
+  v.run('STUB.now=started+120;AzerothCoach.Link.Tick()');
+  assert.deepEqual(JSON.parse(v.value('AzerothCoach.State.JSON(polls)')), [5, 120]);
+  assert.equal(v.value('AzerothCoach.Link.pending[id].started'), v.value('started+100'));
+});
