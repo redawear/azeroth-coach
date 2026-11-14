@@ -26,6 +26,7 @@ local function windowOpen()
 end
 function AC.Offer(tip)
     if not tip or AC.waiting or AC.offering then return end
+    if tip.dungeon and not AC.Tips.DungeonPlan(tip.dungeon, AC.player, AC.db) then return end
     if AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) or windowOpen() then AC.waiting = tip; return end
     local token = {}; AC.offerToken = token; AC.offering = true
     local displayed = false
@@ -88,6 +89,7 @@ function AC.TryOffer()
         if (tip.kind == "level" or tip.kind == "spells") and tonumber(tip.key:match(":(%d+)$")) ~= AC.player.level then old = true end
         if tip.kind == "zone" and tip.key ~= "zone:" .. tostring(AC.player.area or AC.player.zone) then old = true end
         if tip.kind == "capital" and tip.key ~= "capital:" .. tostring(AC.player.area) then old = true end
+        if tip.dungeon and not AC.Tips.DungeonPlan(tip.dungeon, AC.player, AC.db) then old = true end
         local first = tip.questIds and tip.questIds[1]
         if tip.kind == "turnin" and first and (AC.player.active[first] or AC.Planner.Completed(AC.player, first)) then old = true end
         if tip.kind == "gray" and first and not AC.player.active[first] then old = true end
@@ -118,6 +120,7 @@ local function tick()
     AC.player.taxi = AC.State.Try("UnitOnTaxi", UnitOnTaxi, "player") or false
     end
     if AC.waiting and time() - AC.waiting.createdAt >= 300 then AC.waiting = nil end
+    if not AC.flags.combat and AC.waiting and AC.waiting.dungeon and not AC.Tips.DungeonPlan(AC.waiting.dungeon, AC.player, AC.db) then AC.waiting = nil end
     if AC.waiting and not AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) and not windowOpen() then
         local tip = AC.waiting; AC.waiting = nil
         if time() - tip.createdAt < 300 then AC.CoachSection.Show(tip) end

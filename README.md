@@ -125,7 +125,7 @@ CLI flags and screenshot support still need a Windows test.
 | `/coach status` / `doctor` | Show the link and API checks |
 | `/coach ping` | Test the link without an AI request |
 
-Assign the chat key in the game's key bindings. Dungeon tips have `Yes`, `No`, and `Later` answers.
+Assign the chat key in the game's key bindings. Dungeon tips have `Yes`, `No`, `Later`, and `Done it` answers.
 Quest positions from QuestieDB help put the nearest quest first.
 
 ## Sources, images, and limits
@@ -166,8 +166,8 @@ MCP tools, provider streams, quotas, reply validation, and screenshot deletion.
 They do not prove game compatibility. Fullscreen, HDR, scale, taint, and live API behavior need the first Windows session.
 Real Claude and Codex text runs pass on Linux with the restricted flags. Windows image runs remain untested.
 See the [validation record](docs/validation.md) for the checks and limits.
-Two known issues remain: [instance classification](https://github.com/redawear/azeroth-coach/issues/1)
-and [signal reuse after 200 request IDs](https://github.com/redawear/azeroth-coach/issues/2).
+One known issue remains: [signal reuse after 200 request IDs](https://github.com/redawear/azeroth-coach/issues/2).
+Dungeon tips use a classic 5-player allow-list. Unverified Forever instances need an in-game check.
 
 The [implementation brief](docs/implementation.md) records the architecture and exact native UI patterns.
 The [design notes](docs/design.md) record the product decisions.

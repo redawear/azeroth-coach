@@ -93,12 +93,12 @@ function STUB.Event(event, ...)
 end
 local quests = {
     [101] = {name="A Meadow Errand", requiredLevel=10, questLevel=12, zoneOrSort=20, startedBy={{201}}, finishedBy={{201}}},
-    [102] = {name="A Cave Errand", requiredLevel=10, questLevel=14, zoneOrSort=30, preQuestGroup={101}, startedBy={{201}}}
+    [102] = {name="A Cave Errand", requiredLevel=10, questLevel=14, zoneOrSort=1581, preQuestGroup={101}, startedBy={{201}}}
 }
 LibQuestieDB = {
     Enum = {raceMaskById={[1]=1,[95]=4294967296,[96]=8589934592}},
     RequireContract = function(v) return v == 4 end, flavor = {name="Forever"},
     Quest = {GetAllIds=function() return {101,102} end, Get=function(id,key) return quests[id] and quests[id][key] end},
     Npc = {Get=function(id,key) if id == 201 then if key == "name" then return "Meadow Keeper" elseif key == "spawns" then return {[20]={{20,30}}} end end end},
-    Support = {Get=function() return {private={areaIdToUiMapId="return {[20]=10,[30]=11}", uiMapIdToAreaId="return {[10]=20}", dungeons={[30]={"Test Cave"}}}} end}
+    Support = {Get=function() return {private={areaIdToUiMapId="return {[20]=10,[1581]=11}", uiMapIdToAreaId="return {[10]=20}", dungeons={[1581]={"The Deadmines",nil,20,{{20,20,30}}}}}} end}
 }

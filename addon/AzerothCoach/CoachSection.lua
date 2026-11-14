@@ -78,13 +78,13 @@ function C.Initialize()
     end)
     C.block:SetScript("OnLeave", function() C.hover = false; U.TrackerHighlight(C.title, false); GameTooltip:Hide() end)
     C.answers = {}
-    for i, label in ipairs({"Yes", "No", "Later"}) do
-        local answer = label:lower()
+    for i, label in ipairs({"Yes", "No", "Later", "Done it"}) do
+        local answer = label == "Done it" and "no" or label:lower()
         local b = U.Button(C.block, label, function()
             if C.tip and C.tip.dungeon then AC.db.dungeons[tostring(C.tip.dungeon)] = answer == "later" and time() + 3600 or answer end
             C.Dismiss()
-        end)
-        b:SetPoint("TOPLEFT", C.body, "BOTTOMLEFT", (i - 1) * 80, -4); C.answers[i] = b
+        end, 56)
+        b:SetPoint("TOPLEFT", C.body, "BOTTOMLEFT", (i - 1) * 60, -4); C.answers[i] = b
     end
     if AC.db.position then local p = AC.db.position; f:SetPoint(p[1], UIParent, p[2], p[3], p[4]) else C.Dock() end
     f:Hide()

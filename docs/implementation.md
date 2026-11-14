@@ -69,7 +69,31 @@ Zone tables come from `Support.Get("ZoneDB").private`. Decode their source strin
 Index quests by map ID. Map alternative dungeon areas to the main dungeon area.
 Build a reverse index for prerequisites and breadcrumbs. Read race masks from `LibQuestieDB.Enum.raceMaskById`.
 
-**Planner.** `ChainOf(questId)`, `ChainsInZone(areaId, player)`, `DungeonPlan(areaId, player)`, `NextStep(questId)`, `LowValue(log)`. A quest is done, in the log, open, or blocked (level, race, class, prerequisite). Compute the level window of a dungeon from its quests (`requiredLevel` minimum to `questLevel` maximum). Store no level table.
+**Planner.** `ChainOf(questId)`, `ChainsInZone(areaId, player)`, `DungeonPlan(areaId, player)`, `NextStep(questId)`, `LowValue(log)`. A quest is done, in the log, open, or blocked (level, race, class, prerequisite).
+Dungeon counts use quests that fit the character limits, such as race, class, profession, and reputation.
+Quest progress and prerequisites do not remove quests from these counts. This keeps completed chain steps in the total.
+The lower level bound is the median positive `requiredLevel`. The upper bound is the median positive `questLevel`, plus 3.
+For an even count, use the mean of the two middle values. Round the lower bound down and the median `questLevel` up to whole levels. Ignore missing and zero levels.
+Both bounds must exist. Include both bounds in the window. Store no level table.
+
+**Dungeon offers.** QuestieDB has no instance type field in its installed Forever support tables.
+`Data.lua` holds an explicit list of classic 5-player dungeon area IDs.
+The IDs and names match QuestieDB `support/Forever/Zones/dungeons.lua`. Alternative areas keep their existing quest indexes.
+The list includes the separate Stratholme and Dire Maul rows. It excludes transit areas, battlegrounds, and raids.
+Blackrock Spire stays out because its row combines 5-player and 10-player areas.
+Use the first entrance zone in dungeon row field 4. Map its area ID through the QuestieDB area-to-map tables.
+Offer tips only when `Geo.Continent` gives the same known continent for the entrance and the player.
+Check queued offers again before display. A map change, level change, or completed quest can stop a queued offer.
+Ask no question when completed quests are half or more of the total that fits the character.
+Show completed quests in both the question and later tips.
+AI facts include each supported dungeon in the level window, with its name, completed count, and total.
+These summaries use zone rows. Add them after quest facts, within the 1,800-byte limit.
+
+**Unverified Forever instances.** These rows stay out until metadata confirms a 5-player dungeon:
+15475 (Demon Fall Canyon), 15531 (The Tainted Scar), 15828 (The Burning of Andorhal), and 16074 (Karazhan Crypts).
+Also exclude 16236 (Scarlet Enclave), 16544 (City of Dalaran), 16611 (Ruins of Lordaeron), and 16732 (Excavation Site: Wetlands).
+Also exclude 16919 (The Hall of Thanes). Area 16560 has no row in the installed dungeon table.
+Reda must check these instances in the game before support is added.
 
 **Triggers.** The nine triggers of `docs/design.md`.
 - Priority: dungeon, level, gray quest, full log, turn-in, zone, capital, spells, deaths.
@@ -77,6 +101,9 @@ Build a reverse index for prerequisites and breadcrumbs. Read race masks from `L
 - The same trigger with the same subject fires one time in 24 hours. A gray quest fires one time.
 - Deaths: 3 deaths in one zone in 10 minutes. The log trigger reads the maximum from the client, or stays off.
 - Dungeon checks run on login, zone change, and level up. A pending tip blocks new offers.
+- An unanswered dungeon question can return after 24 hours, on a later dungeon check, if it still fits.
+  Dismiss and expiry leave the answer unset. `No` and `Done it` save `no` and stop later offers.
+  `Yes` permits later tips. `Later` delays tips for one hour. The 24-hour trigger limit still applies.
 - Merge event bursts into one snapshot. Keep event times, and discard a death event after 10 minutes.
 
 **Tip flow.** Trigger, facts, template text. If the companion is online and the limit allows, the addon asks for an AI tip and waits 12 seconds maximum. Then it shows the AI tip, or the template. It never changes a tip that is on the screen. A late AI tip goes to the cache only.
@@ -109,7 +136,8 @@ The menu item `Dock to quest tracker` restores the default.
 - No tip: the section is hidden. Nothing is on the screen. The minimize button collapses the block; a new tip then shows as `Coach (1)`.
 - Left-click on the tip opens the chat about this tip. Right-click opens the menu: `Ask the coach`, `Dismiss`, `Pause 15 minutes`, `Pause 1 hour`, `Dock to quest tracker`, `Settings`.
 - Hover shows a `GameTooltip` (`ANCHOR_LEFT`). Line 1: `From the quest data` or `Written by Claude from the quest data`. Line 2: `Click: ask the coach. Right-click: options.`
-- A question tip adds one row of 3 buttons, 76×20 each: `Yes` `No` `Later`. Only the dungeon trigger asks, one time for each dungeon. The addon saves the answer.
+- A question tip adds four 56×20 buttons with 4 px gaps: `Yes`, `No`, `Later`, and `Done it`.
+  Only the dungeon trigger asks. The addon saves the answer. `Done it` saves the same value as `No`.
 - A tip leaves after 10 minutes with a 1 s fade (setting: 5, 10, never). It stays while the mouse is on it.
 - No room below the tracker (bottom edge under 120 px): show only the header, with the tip title as its text.
 

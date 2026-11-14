@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { vm } = require('./lua');
 const { lua, jobsFromStrip } = require('../companion/protocol');
+const { parseContext } = require('../companion/prompts');
 function addon(missing = false, before = '') {
   const v = vm(); v.run(fs.readFileSync(path.join(__dirname, 'game.lua'), 'utf8'));
   if (missing) v.run('LibQuestieDB = nil');
@@ -12,6 +13,151 @@ function addon(missing = false, before = '') {
   const files = fs.readFileSync(path.join(__dirname, '../addon/AzerothCoach/AzerothCoach.toc'), 'utf8').split(/\r?\n/).filter(x => x.endsWith('.lua'));
   files.forEach(v.load); v.run('STUB.Event("PLAYER_LOGIN")'); return v;
 }
+function dungeonAddon() {
+  return addon(false, `
+    UnitLevel=function() return 20 end
+    C_Map.GetBestMapForUnit=function() return 1436 end
+    C_Map.GetMapInfo=function(id)
+      local maps={
+        [1415]={name="Eastern Kingdoms",mapType=2},[1414]={name="Kalimdor",mapType=2},
+        [1436]={name="Westfall",mapType=3,parentMapID=1415},
+        [1442]={name="Stonetalon Mountains",mapType=3,parentMapID=1414},
+        [1416]={name="Alterac Mountains",mapType=3,parentMapID=1415}
+      }
+      return maps[id]
+    end
+    fixtureQuests={
+      [301]={name="A First Errand",zoneOrSort=1581,requiredLevel=18,questLevel=20},
+      [302]={name="A Second Errand",zoneOrSort=10029,requiredLevel=18,questLevel=20},
+      [303]={name="A Third Errand",zoneOrSort=1581,requiredLevel=18,questLevel=20},
+      [304]={name="An Outlier Errand",zoneOrSort=1581,requiredLevel=1,questLevel=60},
+      [305]={name="A Tram Errand",zoneOrSort=2257,requiredLevel=18,questLevel=20},
+      [306]={name="A Battle Errand",zoneOrSort=3277,requiredLevel=18,questLevel=20},
+      [307]={name="A Raid Errand",zoneOrSort=2717,requiredLevel=18,questLevel=20},
+      [308]={name="A City Errand",zoneOrSort=16544,requiredLevel=18,questLevel=20}
+    }
+    LibQuestieDB.Quest.GetAllIds=function() return {301,302,303,304,305,306,307,308} end
+    LibQuestieDB.Quest.Get=function(id,key) return fixtureQuests[id] and fixtureQuests[id][key] end
+    fixtureZones={private={
+      areaIdToUiMapId={[40]=1436,[36]=1416,[406]=1442,[10029]=291},uiMapIdToAreaId={[1436]=40,[1442]=406},
+      dungeons={
+        [1581]={"The Deadmines",{10029},406,{{40,42,72},{406,50,50}}},
+        [2257]={"Deeprun Tram",nil,40,{{40,50,50}}},
+        [3277]={"Warsong Gulch",nil,40,{{40,50,50}}},
+        [2717]={"Molten Core",nil,40,{{40,50,50}}},
+        [16544]={"City of Dalaran",nil,36,{{36,8,59}}}
+      }
+    }}
+    LibQuestieDB.Support.Get=function() return fixtureZones end
+  `);
+}
+test('dungeon offers use the entrance continent and the quest median window', () => {
+  const v = dungeonAddon();
+  assert.equal(v.value('AzerothCoach.CoachSection.tip.dungeon'), '1581');
+  assert.equal(v.value('AzerothCoach.CoachSection.tip.question'), 'true');
+  assert.equal(v.value('#AzerothCoach.Data.InZone(1581)'), '4');
+  v.run(`
+    p=AzerothCoach.player;saved={settings={},dungeons={},seen={}}
+    offers=function()
+      local result={}
+      for _,tip in ipairs(AzerothCoach.Tips.Build("PLAYER_LOGIN",p,nil,saved)) do
+        if tip.kind=="dungeon" then result[#result+1]=tip end
+      end
+      return result
+    end
+    p.level=22;p.map=1442;kalimdor=offers()
+  `);
+  assert.equal(v.value('#kalimdor'), '0');
+  v.run('p.map=1436;p.level=17'); assert.equal(v.value('#offers()'), '0');
+  v.run('p.level=24'); assert.equal(v.value('#offers()'), '0');
+  v.run('p.level=20'); assert.equal(v.value('#offers()'), '1');
+  v.run('p.map=999'); assert.equal(v.value('#offers()'), '0');
+  v.run('p.map=1436;fixtureZones.private.areaIdToUiMapId[40]=nil'); assert.equal(v.value('#offers()'), '0');
+  v.run('fixtureZones.private.areaIdToUiMapId[40]=999'); assert.equal(v.value('#offers()'), '0');
+});
+test('transit areas, battlegrounds, raids and unverified Forever instances keep their indexes but give no offers', () => {
+  const v = dungeonAddon();
+  for (const area of [2257, 3277, 2717, 16544]) {
+    assert.equal(v.value(`AzerothCoach.Data.IsDungeon(${area})`), 'false');
+    assert.equal(v.value(`#AzerothCoach.Data.InZone(${area})`), '1');
+    v.run('AzerothCoach.Data.dungeons[1581]=nil');
+    assert.equal(v.value('#AzerothCoach.Tips.Build("PLAYER_LOGIN",AzerothCoach.player,nil,{settings={},dungeons={}})'), '0');
+  }
+});
+test('dungeon questions show completed quests and stop when at least half are complete', () => {
+  const v = dungeonAddon();
+  v.run('p=AzerothCoach.player;p.completed[301]=true;tips=AzerothCoach.Tips.Build("PLAYER_LOGIN",p,nil,{settings={},dungeons={}})');
+  assert.match(v.value('tips[1].body'), /You finished 1 of 4 quests/);
+  assert.ok(Buffer.byteLength(v.value('tips[1].body')) <= 110);
+  v.run('p.completed[302]=true');
+  assert.equal(v.value('#AzerothCoach.Tips.Build("PLAYER_LOGIN",p,nil,{settings={},dungeons={}})'), '0');
+  v.run('p.completed[303]=true');
+  assert.equal(v.value('#AzerothCoach.Tips.Build("PLAYER_LOGIN",p,nil,{settings={},dungeons={}})'), '0');
+});
+test('four dungeon answers fit the block and save Yes, No, Later or Done it', () => {
+  const v = dungeonAddon();
+  const labels = ['Yes', 'No', 'Later', 'Done it'];
+  assert.equal(v.value('#AzerothCoach.CoachSection.answers'), '4');
+  labels.forEach((label, i) => {
+    assert.equal(v.value(`AzerothCoach.CoachSection.answers[${i + 1}].text`), label);
+    assert.equal(v.value(`AzerothCoach.CoachSection.answers[${i + 1}].width`), '56');
+    assert.equal(v.value(`AzerothCoach.CoachSection.answers[${i + 1}].point[4]`), String(i * 60));
+    v.run(`AzerothCoach.CoachSection.tip={dungeon=1581,question=true};AzerothCoach.CoachSection.answers[${i + 1}].scripts.OnClick()`);
+    assert.equal(v.value('AzerothCoach.db.dungeons["1581"]'), i === 2 ? v.value('time()+3600') : (i === 0 ? 'yes' : 'no'));
+    assert.equal(v.value('AzerothCoach.CoachSection.tip'), 'nil');
+  });
+  assert.equal(v.value('#AzerothCoach.Tips.Build("PLAYER_LOGIN",AzerothCoach.player,nil,AzerothCoach.db)'), '0');
+});
+test('unanswered dungeon questions can repeat after 24 hours on a new dungeon check', () => {
+  const v = dungeonAddon();
+  v.run('tip=AzerothCoach.CoachSection.tip;AzerothCoach.CoachSection.Dismiss();AzerothCoach.db.settings.tipPause=0');
+  assert.equal(v.value('AzerothCoach.db.dungeons["1581"]'), 'nil');
+  assert.equal(v.value('AzerothCoach.Triggers.Choose({tip},AzerothCoach.db,time()+86399,AzerothCoach.db.settings)'), 'nil');
+  assert.equal(v.value('AzerothCoach.Triggers.Choose({tip},AzerothCoach.db,time()+86400,AzerothCoach.db.settings).question'), 'true');
+});
+test('queued dungeon offers stop after a continent, level, completion or preference change', () => {
+  for (const change of ['p.map=1442', 'p.level=24', 'p.completed[301]=true;p.completed[302]=true', 'AzerothCoach.db.dungeons["1581"]="no"']) {
+    const v = dungeonAddon();
+    v.run(`
+      p=AzerothCoach.player;tip=AzerothCoach.CoachSection.tip
+      AzerothCoach.CoachSection.Dismiss();AzerothCoach.db.seen={};AzerothCoach.db.settings.tipPause=0
+      ${change}
+      AzerothCoach.candidates={[tip.key]=tip};AzerothCoach.TryOffer()
+    `);
+    assert.equal(v.value('AzerothCoach.CoachSection.tip'), 'nil', change);
+    assert.equal(v.value('AzerothCoach.candidates[tip.key]'), 'nil', change);
+    v.run('AzerothCoach.Offer(tip)');
+    assert.equal(v.value('AzerothCoach.CoachSection.tip'), 'nil', change);
+  }
+  const v = dungeonAddon();
+  v.run(`
+    AzerothCoach.waiting=AzerothCoach.CoachSection.tip;AzerothCoach.CoachSection.Dismiss()
+    C_Map.GetBestMapForUnit=function() return 1442 end
+    AzerothCoach.tipEvents={};AzerothCoach.candidates={};STUB.Advance(1)
+  `);
+  assert.equal(v.value('AzerothCoach.waiting'), 'nil');
+  assert.equal(v.value('AzerothCoach.CoachSection.tip'), 'nil');
+});
+test('AI facts keep dungeon completion summaries through the companion parser and give quest rows first use of space', () => {
+  const v = dungeonAddon();
+  v.run('p=AzerothCoach.player;p.completed[301]=true;pack=AzerothCoach.Data.Facts(p,nil,"")');
+  let pack = JSON.parse(v.value('AzerothCoach.State.JSON(pack)'));
+  assert.deepEqual(pack.z[1581], { name: 'The Deadmines', completed: 1, total: 4 });
+  const ctx = v.value('AzerothCoach.State.Context(p,nil,"")');
+  assert.deepEqual(parseContext(ctx).facts.z[1581], pack.z[1581]);
+  assert.equal(v.value('AzerothCoach.Data.Expand("{z:1581}")'), 'The Deadmines');
+  v.run('p.level=24');
+  assert.equal(v.value('AzerothCoach.Data.Facts(p,nil,"").z["1581"]'), 'nil');
+  v.run(`
+    p.level=20
+    for id=401,430 do AzerothCoach.Data.quests[id]={id=id,name=string.rep("Q",100),minLevel=18,level=20};p.active[id]={} end
+    pack=AzerothCoach.Data.Facts(p,nil,"")
+  `);
+  pack = JSON.parse(v.value('AzerothCoach.State.JSON(pack)'));
+  assert.ok(Buffer.byteLength(JSON.stringify(pack)) <= 1800);
+  assert.ok(Object.keys(pack.q).length > 0);
+  assert.equal(pack.z[1581], undefined);
+});
 test('full addon loads, indexes provider, uses a quiet tracker section and no tracker module', () => {
   const v = addon();
   assert.equal(v.value('AzerothCoach.Data.ready'), 'true');
@@ -184,15 +330,18 @@ test('QuestieDB uses map groups, override strings, alternative dungeon areas, an
 });
 test('real QuestieDB support files obey the same contract', { skip: !process.env.QUESTIEDB_SOURCE }, () => {
   const v = vm(); v.run(fs.readFileSync(path.join(__dirname, 'game.lua'), 'utf8'));
-  v.run('zone={private={}};QuestieLoader={ImportModule=function(_,name) if name=="ZoneDB" then return zone end;return {Current={}} end}');
-  for (const file of ['areaIdToUiMapId.lua', 'uiMapIdToAreaId.lua']) v.run(fs.readFileSync(path.join(process.env.QUESTIEDB_SOURCE, 'support/Forever/Zones', file), 'utf8'));
-  v.run('zone.private.dungeons={[491]={"Test Cave",{1717}}}; LibQuestieDB.Support.Get=function() return zone end;local old=LibQuestieDB.Quest.Get;LibQuestieDB.Quest.Get=function(id,key) if key=="zoneOrSort" then return id==101 and 9 or 1717 end;return old(id,key) end');
+  v.run('zone={private={}};QuestieLoader={ImportModule=function(_,name) if name=="ZoneDB" then return zone end;return {Current=0,Wotlk=2,Cata=3} end}');
+  for (const file of ['areaIdToUiMapId.lua', 'uiMapIdToAreaId.lua', 'dungeons.lua']) v.run(fs.readFileSync(path.join(process.env.QUESTIEDB_SOURCE, 'support/Forever/Zones', file), 'utf8'));
+  v.run('LibQuestieDB.Support.Get=function() return zone end;local old=LibQuestieDB.Quest.Get;LibQuestieDB.Quest.Get=function(id,key) if key=="zoneOrSort" then return id==101 and 9 or 1717 end;return old(id,key) end');
   v.load('Planner.lua'); v.load('Data.lua'); v.load('State.lua');
   v.run('AzerothCoach.Data.Initialize(function() end)');
   assert.equal(v.value('AzerothCoach.Data.Map(9)'), '1429');
   assert.equal(v.value('AzerothCoach.Data.Area(1429)'), '12');
   assert.equal(v.value('AzerothCoach.Data.InMap(1429)[1].id'), '101');
   assert.equal(v.value('AzerothCoach.Data.InZone(491)[1].id'), '102');
+  assert.equal(v.value('AzerothCoach.Data.EntranceMap(1581)'), '1436');
+  v.run('supported=0;for area,row in pairs(zone.private.dungeons) do if AzerothCoach.Data.IsDungeon(area) then assert(type(row[1])=="string" and #row[1]>0);supported=supported+1 end end');
+  assert.equal(v.value('supported'), '25');
 });
 test('event bursts share one snapshot and stale death events cannot create a fresh tip', () => {
   const v = addon();

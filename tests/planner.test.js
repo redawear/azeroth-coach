@@ -46,6 +46,28 @@ test('ranking keeps the nearest quest first when the other scores match', () => 
   v.run('p.x=1;rows=AzerothCoach.Planner.Rank({q[1],q[4]},p,point)');
   assert.equal(v.value('rows[1].quest.id'), '4');
 });
+test('dungeon windows use medians, skip missing levels and keep completed chain quests in the counts', () => {
+  const v = planner();
+  v.run(`
+    p.level=20;p.completed={[1]=true,[2]=true}
+    q={
+      [1]={id=1,minLevel=18,level=20,nextQuest=2},[2]={id=2,minLevel=18,level=20},
+      [3]={id=3,minLevel=1,level=60},[4]={id=4,minLevel=18,level=20},
+      [5]={id=5,minLevel=60,level=80,races=2},[6]={id=6,minLevel=0,level=0}
+    }
+    plan=AzerothCoach.Planner.Dungeon({q[1],q[2],q[3],q[4],q[5],q[6]},p,get)
+  `);
+  assert.equal(Number(v.value('plan.minLevel')), 18);
+  assert.equal(Number(v.value('plan.maxLevel')), 23);
+  assert.equal(v.value('plan.inRange'), 'true');
+  assert.equal(v.value('plan.completed'), '2');
+  assert.equal(v.value('plan.total'), '5');
+  v.run('q[3].minLevel=19;q[3].level=21;plan=AzerothCoach.Planner.Dungeon({q[1],q[3]},p,get)');
+  assert.equal(Number(v.value('plan.minLevel')), 18);
+  assert.equal(Number(v.value('plan.maxLevel')), 24);
+  assert.equal(v.value('AzerothCoach.Planner.Dungeon({q[6]},p,get).inRange'), 'false');
+  assert.equal(v.value('AzerothCoach.Planner.Dungeon({},p,get).inRange'), 'false');
+});
 test('trigger priority, pause, dedup, permanent gray suppression, death window and hide rules', () => {
   const v = planner();
   v.run('saved={seen={}};settings={tipPause=600}; tips={{kind="zone",key="z"},{kind="dungeon",key="d"}}');
@@ -59,4 +81,16 @@ test('trigger priority, pause, dedup, permanent gray suppression, death window a
   assert.equal(v.value('AzerothCoach.Triggers.Death(saved,1,1)'), 'false');
   assert.equal(v.value('AzerothCoach.Triggers.Death(saved,1,2)'), 'true');
   assert.equal(v.value('AzerothCoach.Triggers.Death(saved,1,700)'), 'false');
+});
+
+test('dungeon level window uses whole levels when the median falls between two levels', () => {
+  const v = planner();
+  v.run(`local quests = {
+    {id = 1, minLevel = 17, level = 20}, {id = 2, minLevel = 18, level = 21},
+    {id = 3, minLevel = 18, level = 22}, {id = 4, minLevel = 19, level = 23}
+  }
+  local player = {level = 20, active = {}, completed = {}, completedKnown = true, skills = {}, spells = {}, reputation = {}}
+  plan = AzerothCoach.Planner.Dungeon(quests, player, function(id) return quests[id] end)`);
+  assert.equal(v.value('plan.minLevel'), '18');
+  assert.equal(v.value('plan.maxLevel'), '25');
 });

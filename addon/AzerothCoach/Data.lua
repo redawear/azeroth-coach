@@ -3,6 +3,16 @@ AC.Data = {quests = {}, zones = {}, dungeons = {}, dungeonQuests = {}, followups
 local D = AC.Data
 local provider, questDB, npcDB, objectDB, itemDB, maps, reverse, dungeonData
 
+-- Classic 5-player dungeons. IDs and names: QuestieDB support/Forever/Zones/dungeons.lua.
+-- Blackrock Spire has shared 5-player and 10-player areas. Keep it out.
+local supportedDungeons = {
+    [2437] = true, [718] = true, [1581] = true, [209] = true, [719] = true, [717] = true,
+    [721] = true, [491] = true, [796] = true, [722] = true, [1337] = true, [1176] = true,
+    [2100] = true, [1477] = true, [1584] = true, [2017] = true, [2057] = true, [2557] = true,
+    [10001] = true, [10022] = true, [10023] = true, [10024] = true, [10025] = true,
+    [10026] = true, [10027] = true
+}
+
 local function get(entity, id, key)
     if not entity or not entity.Get then return nil end
     local ok, value = pcall(entity.Get, id, key)
@@ -121,6 +131,12 @@ function D.Zone(area)
 end
 function D.Area(map) return reverse and reverse[map] end
 function D.Map(area) return maps and maps[area] end
+function D.IsDungeon(area) return supportedDungeons[area] == true end
+function D.EntranceMap(area)
+    local row = dungeonData and dungeonData[area]
+    local entrance = row and row[4] and row[4][1]
+    return entrance and D.Map(entrance[1])
+end
 function D.RaceBit(id) return provider and provider.Enum and provider.Enum.raceMaskById and provider.Enum.raceMaskById[id] end
 function D.InMap(map)
     local out = {}
@@ -171,7 +187,7 @@ function D.Name(kind, id)
     if kind == "n" then return get(npcDB, id, "name") end
     if kind == "o" then return get(objectDB, id, "name") end
     if kind == "i" then return get(itemDB, id, "name") end
-    if kind == "z" then return D.Zone(id) end
+    if kind == "z" then return D.dungeons[id] or D.Zone(id) end
 end
 
 function D.Expand(text)
@@ -219,5 +235,13 @@ function D.Facts(player, tip, question)
     end
     local ids = {}; for id in pairs(player.active) do ids[#ids + 1] = id end; table.sort(ids)
     for _, id in ipairs(ids) do if not pack.q[tostring(id)] then fit(function() add(id, true) end) end end
+    -- Add summaries last. Quest facts have first use of the byte limit.
+    local areas = {}; for area in pairs(D.dungeons) do if D.IsDungeon(area) then areas[#areas + 1] = area end end; table.sort(areas)
+    for _, area in ipairs(areas) do
+        local plan = AC.Planner.Dungeon(D.InZone(area), player, D.Quest)
+        if plan.inRange then
+            fit(function() pack.z[tostring(area)] = {name = D.dungeons[area], completed = plan.completed, total = plan.total} end)
+        end
+    end
     return pack
 end

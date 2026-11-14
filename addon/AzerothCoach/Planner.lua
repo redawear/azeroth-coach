@@ -30,21 +30,23 @@ local function listDone(ids, player, all)
     return all
 end
 
-function P.Restrictions(q, player, future)
+function P.Restrictions(q, player, future, ignoreProgress)
     if not q then return false, "Quest data is missing." end
     if not hasBit(q.races, player.raceBit) or not hasBit(q.classes, player.classBit) then
         return false, "This quest has a race or class limit."
     end
     if not future and (q.minLevel or 0) > player.level then return false, "Your level is too low." end
     if (q.maxLevel or 0) > 0 and player.level > q.maxLevel then return false, "You are above the level limit." end
-    for _, id in ipairs(q.exclusive or {}) do
-        if player.active[id] or P.Completed(player, id) then return false, "A different quest branch is active or complete." end
+    if not ignoreProgress then
+        for _, id in ipairs(q.exclusive or {}) do
+            if player.active[id] or P.Completed(player, id) then return false, "A different quest branch is active or complete." end
+        end
+        for _, id in ipairs({q.nextQuest or 0, q.untilQuest or 0}) do
+            if id > 0 and P.Completed(player, id) then return false, "This quest is no longer available." end
+        end
+        if (q.nextQuest or 0) > 0 and player.active[q.nextQuest] then return false, "The next quest is already active." end
+        if (q.disabledBy or 0) > 0 and player.active[q.disabledBy] then return false, "An active quest blocks this quest." end
     end
-    for _, id in ipairs({q.nextQuest or 0, q.untilQuest or 0}) do
-        if id > 0 and P.Completed(player, id) then return false, "This quest is no longer available." end
-    end
-    if (q.nextQuest or 0) > 0 and player.active[q.nextQuest] then return false, "The next quest is already active." end
-    if (q.disabledBy or 0) > 0 and player.active[q.disabledBy] then return false, "An active quest blocks this quest." end
     if q.skill and #q.skill > 0 and (player.skills[q.skill[1]] or 0) < (q.skill[2] or 1) then
         return false, "The required profession rank is not known."
     end
@@ -165,13 +167,22 @@ function P.Rank(quests, player, getPoint)
     return ranked
 end
 
+local function median(values)
+    table.sort(values)
+    local n = #values
+    if n == 0 then return nil end
+    return (values[math.floor((n + 1) / 2)] + values[math.ceil((n + 1) / 2)]) / 2
+end
+
 function P.Dungeon(quests, player, getQuest)
     local out = {total = 0, active = 0, completed = 0, missing = {}, minLevel = nil, maxLevel = nil}
+    local minimums, levels = {}, {}
     for _, q in ipairs(quests) do
-        if P.Restrictions(q, player, true) then
+        -- Count quests by character limits. Quest progress must not erase completed chain steps.
+        if P.Restrictions(q, player, true, true) then
             out.total = out.total + 1
-            if (q.minLevel or 0) > 0 then out.minLevel = math.min(out.minLevel or 999, q.minLevel) end
-            if (q.level or 0) > 0 then out.maxLevel = math.max(out.maxLevel or 0, q.level) end
+            if (q.minLevel or 0) > 0 then minimums[#minimums + 1] = q.minLevel end
+            if (q.level or 0) > 0 then levels[#levels + 1] = q.level end
             if P.Completed(player, q.id) then out.completed = out.completed + 1
             elseif player.active[q.id] then out.active = out.active + 1
             else
@@ -180,6 +191,11 @@ function P.Dungeon(quests, player, getQuest)
             end
         end
     end
+    -- Round outward. A median can fall between two levels, and the tip text shows whole levels.
+    out.minLevel, out.maxLevel = median(minimums), median(levels)
+    if out.minLevel then out.minLevel = math.floor(out.minLevel) end
+    if out.maxLevel then out.maxLevel = math.ceil(out.maxLevel) + 3 end
+    out.inRange = out.minLevel ~= nil and out.maxLevel ~= nil and player.level >= out.minLevel and player.level <= out.maxLevel
     return out
 end
 
