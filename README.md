@@ -9,6 +9,8 @@ No part has run in the Forever client yet.
 The coach shows one quiet tip below the quest tracker. It has no box or sound.
 It hides in combat and when no tip exists. Shift-drag the header to move it.
 Click a tip to ask about it. Right-click for pause and other options.
+The minimap button opens or closes the chat. Right-click it for the same options.
+Drag it along the minimap edge. A small dot shows a tip that waits or stays hidden.
 
 The addon works without AI. The separate **QuestieDB** addon supplies the quest facts.
 The Windows companion adds Claude or Codex through your own CLI login.
@@ -124,11 +126,13 @@ CLI flags and screenshot support still need a Windows test.
 | `/coach interval 5` | Set the pause between tips: 5, 10, 20, or 30 minutes |
 | `/coach expire 10` | Remove a tip after 5 or 10 minutes, or `never` |
 | `/coach dungeons on` / `off` | Enable or disable dungeon tips |
+| `/coach button on` / `off` | Show or hide the minimap button |
 | `/coach settings` | Open native settings, or show the commands |
 | `/coach status` / `doctor` | Show the link and API checks |
 | `/coach ping` | Test the link without an AI request |
 
 Assign the chat key in the game's key bindings. Dungeon tips have `Yes`, `No`, `Later`, and `Done it` answers.
+The settings also have a `Show the minimap button` checkbox. Each character keeps the button position and visibility.
 Quest positions from QuestieDB help put the nearest quest first.
 
 ## Sources, images, and limits

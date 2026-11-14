@@ -18,6 +18,11 @@ function AC.Print(text)
     AC.Log(text)
     if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("Azeroth Coach: " .. text) end
 end
+function AC.ReopenHint()
+    if AC.db.reopenHint then return end
+    AC.db.reopenHint = true
+    AC.Print("Type /coach or click the minimap button to open the coach again.")
+end
 local function windowOpen()
     for _, name in ipairs({"QuestFrame", "GossipFrame", "MerchantFrame", "ClassTrainerFrame"}) do
         if _G[name] and _G[name]:IsShown() then return true end
@@ -27,7 +32,9 @@ end
 function AC.Offer(tip)
     if not tip or AC.waiting or AC.offering then return end
     if tip.dungeon and not AC.Tips.DungeonPlan(tip.dungeon, AC.player, AC.db) then return end
-    if AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) or windowOpen() then AC.waiting = tip; return end
+    if AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) or windowOpen() then
+        AC.waiting = tip; AC.MinimapButton.Refresh(); return
+    end
     local token = {}; AC.offerToken = token; AC.offering = true
     local displayed = false
     local function deliver(reply)
@@ -37,7 +44,7 @@ function AC.Offer(tip)
             tip.body = AC.Limit(AC.Data.Expand(reply.text), 110)
             tip.from = AC.Link.provider == "codex" and "Codex" or "Claude"
         end
-        if AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) or windowOpen() then AC.waiting = tip
+        if AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) or windowOpen() then AC.waiting = tip; AC.MinimapButton.Refresh()
         else AC.CoachSection.Show(tip) end
     end
     if AC.Link.IsOnline() and not tip.question then
@@ -131,7 +138,7 @@ local function tick()
         c.tip = nil; AC.UI.Fade(c.block, false, 1)
     else c.Refresh() end
     if AC.tipEvents and next(AC.tipEvents) and time() - (AC.db.lastTipAt or -1e9) >= AC.db.settings.tipPause then AC.Update("DEFERRED") end
-    AC.TryOffer(); AC.ChatWindow.Refresh()
+    AC.TryOffer(); AC.ChatWindow.Refresh(); AC.MinimapButton.Refresh()
 end
 local function initialize()
     AzerothCoachDB = AzerothCoachDB or {}
@@ -142,7 +149,7 @@ local function initialize()
     d.settings.tipPause = d.settings.tipPause or 600; d.settings.tipAge = d.settings.tipAge or 600
     -- Keep the session for reload recovery. Reply IDs reject old slot messages.
     d.session = d.session or (tostring(time()) .. "-" .. tostring(math.random(100000, 999999))); d.nextId = d.nextId or 0
-    AC.CoachSection.Initialize(); AC.ChatWindow.Initialize(); AC.Settings.Initialize()
+    AC.CoachSection.Initialize(); AC.ChatWindow.Initialize(); AC.MinimapButton.Initialize(); AC.Settings.Initialize()
     AC.Data.Initialize(function(ready)
         AC.Update("PLAYER_LOGIN")
         if not ready and not d.dataWarning then

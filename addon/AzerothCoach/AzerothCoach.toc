@@ -18,6 +18,7 @@ UI.lua
 Link.lua
 CoachSection.lua
 ChatWindow.lua
+MinimapButton.lua
 Settings.lua
 Slash.lua
 Core.lua

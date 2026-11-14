@@ -11,8 +11,8 @@ function C.Dock()
         else C.frame:SetPoint("TOPLEFT", tracker, "TOPLEFT") end
     else C.frame:SetPoint("TOPRIGHT", MinimapCluster or UIParent, "BOTTOMRIGHT", 0, -10) end
 end
-function C.Menu()
-    U.Menu(C.frame, {
+function C.Menu(owner)
+    U.Menu(owner or C.frame, {
         {"Ask the coach", function() AC.ChatWindow.Open(C.tip) end},
         {"Dismiss", C.Dismiss},
         {"Pause 15 minutes", function() AC.db.pauseUntil = time() + 900 end},
@@ -22,8 +22,10 @@ function C.Menu()
     })
 end
 function C.Dismiss()
-    C.tip = nil
+    local hadTip = C.tip or AC.waiting
+    C.tip = nil; AC.waiting = nil
     C.Refresh()
+    if hadTip then AC.ReopenHint() end
 end
 function C.Show(tip)
     C.tip, C.shownAt = tip, time()
@@ -35,8 +37,9 @@ end
 function C.Refresh()
     if not C.frame then return end
     local p = AC.player
-    if not p or AC.db.settings.enabled == false or AC.Triggers.Hidden(p, AC.flags, AC.db, time()) then C.frame:Hide(); return end
-    if not C.tip then C.frame:Hide(); return end
+    if not p or AC.db.settings.enabled == false or AC.Triggers.Hidden(p, AC.flags, AC.db, time()) or not C.tip then
+        C.frame:Hide(); AC.MinimapButton.Refresh(); return
+    end
     if not AC.db.position then C.Dock() end
     C.title:SetText(AC.Limit(AC.Data.Expand(C.tip.title), 32)); C.body:SetText(AC.Limit(AC.Data.Expand(C.tip.body), 110))
     local blockHeight = C.title:GetStringHeight() + 4 + C.body:GetStringHeight() + (C.tip.question and 24 or 0)
@@ -53,6 +56,7 @@ function C.Refresh()
     C.block:SetHeight(blockHeight)
     C.frame:SetHeight(collapsed and 26 or height)
     C.frame:SetAlpha(1); C.frame:Show()
+    AC.MinimapButton.Refresh()
 end
 function C.Initialize()
     local f = CreateFrame("Frame", "AzerothCoachSection", UIParent)

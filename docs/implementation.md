@@ -31,6 +31,7 @@ Keep the layout that exists: root `package.json`, `scripts/`, `tests/`, `compani
 | `Geo.lua` | wow-ai `Map.lua`: map math | Map projection, continent lookup, distance and bearing |
 | `UI.lua` | new shared helper (section 5) | Every frame part comes from here |
 | `CoachSection.lua`, `ChatWindow.lua`, `Settings.lua`, `Slash.lua` | chat from the wow-ai transcript, bubbles, copy box, input | The two features |
+| `MinimapButton.lua` | new, shared UI helper | Opens the chat and the shared menu. Shows a dot for a waiting or hidden tip. |
 
 `companion/`: `main.js` (from `bridge.js`), `protocol.js`, `agents.js` (only `claude` and `codex`), `capture.ps1` (plus `-Shot`), `install-slots.js`, `supervisor.js`, and new `jobs.js`, `prompts.js`, `validate.js`, `tools-mcp.js`, `sources.js`, `cache.js`.
 
@@ -140,8 +141,10 @@ The menu item `Dock to quest tracker` restores the default.
 
 **What the player sees.**
 - Header text `Coach`. One block: a title (1 line, 32 characters maximum) and a body (3 lines, 110 characters maximum).
-- No background, no border, no icon, no button, no sound, no chat line, no glow. A new tip fades in for 0.5 s. Do not play `AddAnim`.
-- No tip: the section is hidden. Nothing is on the screen. The minimize button collapses the block; a new tip then shows as `Coach (1)`.
+- The tip has no background, border, icon, button, sound, chat line, or glow. A new tip fades in for 0.5 s.
+  Do not play `AddAnim`. The minimap button is the one exception. It stays visible unless the player hides it.
+- No tip: the section is hidden. Only the minimap button stays visible. The minimize button collapses the block.
+  A new tip then shows as `Coach (1)`.
 - Left-click on the tip opens the chat about this tip. Right-click opens the menu: `Ask the coach`, `Dismiss`, `Pause 15 minutes`, `Pause 1 hour`, `Dock to quest tracker`, `Settings`.
 - Hover shows a `GameTooltip` (`ANCHOR_LEFT`). Line 1: `From the quest data` or `Written by Claude from the quest data`. Line 2: `Click: ask the coach. Right-click: options.`
 - A question tip adds four 56×20 buttons with 4 px gaps: `Yes`, `No`, `Later`, and `Done it`.
@@ -154,6 +157,12 @@ The menu item `Dock to quest tracker` restores the default.
 - An instance (`IsInInstance()`), death or ghost, a taxi flight, a cinematic, Edit Mode, an active pause, the coach set to off.
 - The player collapsed the whole quest tracker (docked mode only).
 - A new tip also waits while `QuestFrame`, `GossipFrame`, `MerchantFrame` or the trainer frame is open.
+
+**Minimap button.** Start at 225 degrees, on the bottom-left edge. Left-drag moves it along the edge.
+Save its angle and visibility for each character. Left-click uses the same chat toggle as `/coach`.
+Right-click opens the Coach menu. A small dot marks a waiting tip or a tip in a hidden or collapsed block.
+Opening the chat clears the dot for those tips. A new tip can show it again. Dismiss and expiry clear it.
+The first chat close or tip dismiss prints one hint about `/coach` and the button. Screenshot capture does not print it.
 
 ## 6. Chat UI
 
@@ -184,7 +193,10 @@ Frame `AzerothCoachChat`: `UI.Panel`, 420×360, minimum 320×240, maximum 640×6
 | No source used | Gray line under the answer: `No source. Check this answer.` |
 | Wowhead blocked | Gray line: `Wowhead is not available now. The coach used the wiki.` |
 
-Put the provider name of the reply (`Claude` or `Codex`) in these strings. Slash commands: `/coach` (open or close), `/coach <text>`, `/coach pause [minutes]`, `/coach resume`, `/coach dock`, `/coach status`, `/coach doctor`, `/coach ping`.
+Put the provider name of the reply (`Claude` or `Codex`) in these strings.
+Slash commands: `/coach` (open or close), `/coach <text>`, `/coach pause [minutes]`, `/coach resume`, `/coach dock`,
+`/coach status`, `/coach doctor`, `/coach ping`, `/coach button on|off`.
+The settings also have a `Show the minimap button` checkbox.
 
 ## 7. Companion
 

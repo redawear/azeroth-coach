@@ -8,8 +8,8 @@ function W.Add(role, text, reply)
     W.dirty = true; W.Refresh()
 end
 function W.HideForShot()
-    W.shotVisible = W.frame:IsShown(); W.frame:Hide()
     W.shotUntil = GetTime() + 15
+    W.shotVisible = W.frame:IsShown(); W.frame:Hide()
     C_Timer.After(15, function() if W.shotUntil and GetTime() >= W.shotUntil then W.ResumeShot() end end)
 end
 function W.ResumeShot()
@@ -91,9 +91,14 @@ function W.Open(tip)
     W.tip = tip; W.dirty = true; W.frame:Show(); W.Refresh(); W.input:SetFocus()
     if not AC.Link.signals and not AC.Link.IsOnline() then AC.Link.Hello() end
 end
+function W.Toggle()
+    if W.frame:IsShown() then W.frame:Hide() else W.Open() end
+end
 function W.Initialize()
     W.frame = U.Panel("AzerothCoachChat", 420, 360); local f = W.frame
-    f:SetPoint("LEFT", UIParent, "LEFT", 40, 40); U.Close(f)
+    f:SetPoint("LEFT", UIParent, "LEFT", 40, 40); W.close = U.Close(f)
+    f:SetScript("OnShow", function() AC.MinimapButton.Refresh() end)
+    f:SetScript("OnHide", function() if not W.shotUntil then AC.ReopenHint() end end)
     local title = U.Text(f, "Azeroth Coach"); title:SetPoint("TOPLEFT", 16, -14)
     W.dot = U.StatusDot(f); W.dot:SetPoint("TOPLEFT", 170, -16)
     W.status = U.Text(f, "", "muted"); W.status:SetPoint("LEFT", W.dot, "RIGHT", 5, 0)

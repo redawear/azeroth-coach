@@ -6,6 +6,11 @@ function S.Initialize()
     local ok, category = pcall(Settings.RegisterVerticalLayoutCategory, "Azeroth Coach")
     if not ok then return end
     S.category = category; Settings.RegisterAddOnCategory(category)
+    if Settings.RegisterProxySetting and Settings.CreateCheckbox then
+        local good, setting = pcall(Settings.RegisterProxySetting, category, "AzerothCoach_minimap", Settings.VarType.Boolean, "Show the minimap button", true,
+            function() return not AC.db.minimap.hide end, function(value) AC.MinimapButton.SetShown(value) end)
+        if good then Settings.CreateCheckbox(category, setting, "Show the minimap button") end
+    end
     if not Settings.RegisterAddOnSetting or not Settings.CreateCheckbox then return end
     for _, spec in ipairs({{"enabled", "Enable the coach", true}, {"dungeons", "Suggest dungeon quests", true}}) do
         local good, setting = pcall(Settings.RegisterAddOnSetting, category, "AzerothCoach_" .. spec[1], spec[1], AC.db.settings, Settings.VarType.Boolean, spec[2], spec[3])
@@ -26,5 +31,5 @@ function S.Initialize()
 end
 function S.Open()
     if S.category and Settings.OpenToCategory then Settings.OpenToCategory(S.category:GetID())
-    else AC.Print("Settings: /coach on, off, interval 5|10|20|30, expire 5|10|never, dungeons on|off.") end
+    else AC.Print("Settings: /coach on, off, interval 5|10|20|30, expire 5|10|never, dungeons on|off, button on|off.") end
 end

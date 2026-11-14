@@ -131,7 +131,7 @@ test('queued dungeon offers stop after a continent, level, completion or prefere
   }
   const v = dungeonAddon();
   v.run(`
-    AzerothCoach.waiting=AzerothCoach.CoachSection.tip;AzerothCoach.CoachSection.Dismiss()
+    local tip=AzerothCoach.CoachSection.tip;AzerothCoach.CoachSection.Dismiss();AzerothCoach.waiting=tip
     C_Map.GetBestMapForUnit=function() return 1442 end
     AzerothCoach.tipEvents={};AzerothCoach.candidates={};STUB.Advance(1)
   `);

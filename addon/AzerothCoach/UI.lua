@@ -139,9 +139,25 @@ function U.SetStatus(dot, state)
     local names = {online = "Online", stale = "Away", down = "DnD", working = "DnD"}
     dot:SetTexture("Interface\\FriendsFrame\\StatusIcon-" .. (names[state] or "Offline"))
 end
-function U.Tooltip(owner, title, text)
+function U.MinimapButton(name)
+    local b = CreateFrame("Button", name, Minimap)
+    b:SetSize(31, 31); b:SetFrameStrata("MEDIUM")
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp"); b:RegisterForDrag("LeftButton")
+    local background = b:CreateTexture(nil, "BACKGROUND")
+    background:SetTexture("Interface\\Minimap\\UI-Minimap-Background"); background:SetSize(25, 25); background:SetPoint("CENTER")
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09"); b.icon:SetSize(20, 20); b.icon:SetPoint("CENTER")
+    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local border = b:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder"); border:SetSize(53, 53); border:SetPoint("TOPLEFT")
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    b.badge = U.StatusDot(b); b.badge:SetPoint("TOPRIGHT", 1, 1); U.SetStatus(b.badge, "online"); b.badge:Hide()
+    return b
+end
+function U.Tooltip(owner, title, text, extra)
     GameTooltip:SetOwner(owner, "ANCHOR_LEFT"); GameTooltip:AddLine(title)
     if text then GameTooltip:AddLine(text, nil, nil, nil, true) end
+    if extra then GameTooltip:AddLine(extra, nil, nil, nil, true) end
     GameTooltip:Show()
 end
 function U.Menu(owner, entries)
