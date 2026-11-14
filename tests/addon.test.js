@@ -230,6 +230,114 @@ test('source copy, map geometry, limits and whole JSON facts', () => {
   assert.equal(v.value('bad'), 'nil');
   const ctx = v.value('ctx'); assert.doesNotThrow(() => JSON.parse(ctx.split('\n--- facts ---\n')[1]));
 });
+
+test('chat and coach context include guarded position and subzone before large inventory lines', () => {
+  const v = addon(false, 'GetSubZoneText=function() return "Meadow Camp" end');
+  v.run('p=AzerothCoach.State.Read();p.x=.723;p.y=.421;p.bags={[1]=string.rep("B",900)};p.equipment={[1]=string.rep("E",900)}');
+  for (const tip of ['nil', '{key="zone:20",questIds={101}}']) {
+    const { context } = parseContext(v.value(`AzerothCoach.State.Context(p,${tip},"")`));
+    assert.match(context, /Zone: Test Meadow; quests: 0\nPosition: 72\.3, 42\.1; subzone: Meadow Camp\nXP:/);
+    assert.ok(Buffer.byteLength(context) <= 900);
+    assert.doesNotMatch(context, /Bags|Equipment/);
+  }
+  assert.equal(v.value('AzerothCoach.State.api.GetSubZoneText'), 'found');
+  assert.equal(v.value('AzerothCoach.State.api["MapPosition.GetXY"]'), 'found');
+  v.run('GetSubZoneText=function() error("unavailable") end;C_Map.GetPlayerMapPosition=function() return {GetXY=function() error("unavailable") end} end;p=AzerothCoach.State.Read()');
+  assert.match(parseContext(v.value('AzerothCoach.State.Context(p)')).context, /Position: unknown; subzone: none/);
+  assert.equal(v.value('AzerothCoach.State.api.GetSubZoneText'), 'failed');
+  v.run('GetSubZoneText=nil;C_Map.GetPlayerMapPosition=nil;p=AzerothCoach.State.Read()');
+  assert.match(parseContext(v.value('AzerothCoach.State.Context(p)')).context, /Position: unknown; subzone: none/);
+  assert.equal(v.value('AzerothCoach.State.api.GetSubZoneText'), 'missing');
+  v.run('GetSubZoneText=function() return "" end;p=AzerothCoach.State.Read()');
+  assert.match(parseContext(v.value('AzerothCoach.State.Context(p)')).context, /subzone: none/);
+});
+
+function locationAddon() {
+  return addon(false, `
+    targetSpawns={ [201]={[20]={{20,30}}}, [202]={[20]={{80,80},{60,50}}}, [203]={[20]={{50,60}}} }
+    LibQuestieDB.Npc.Get=function(id,key)
+        if key=="name" then return "Test NPC "..id end
+        if key=="spawns" then return targetSpawns[id] end
+    end
+    LibQuestieDB.Object={Get=function(id,key)
+        if key=="name" then return "Test object "..id end
+        if key=="spawns" then return targetSpawns[id] end
+    end}
+    LibQuestieDB.Item={Get=function(id,key)
+        if key=="npcDrops" then return {202} end
+        if key=="objectDrops" then return {203} end
+    end}
+  `);
+}
+
+for (const [direction, x, y] of [
+  ['north', 50, 40], ['north-east', 60, 40], ['east', 60, 50], ['south-east', 60, 60],
+  ['south', 50, 60], ['south-west', 40, 60], ['west', 40, 50], ['north-west', 40, 40]
+]) test(`quest facts give the ${direction} direction from the map and an integer distance`, () => {
+  const v = locationAddon();
+  v.run(`p=AzerothCoach.player;p.x=.5;p.y=.5;p.active={[101]={}};AzerothCoach.Data.quests[101].objectives={{{202}}};targetSpawns[202]={[20]={{${x},${y}}}}`);
+  const pack = parseContext(v.value('AzerothCoach.State.Context(p)')).facts;
+  assert.deepEqual(pack.q[101].target, { id: 202, kind: 'n' });
+  assert.equal(pack.q[101].dir, direction);
+  assert.equal(pack.q[101].d, x === 50 || y === 50 ? 100 : 141);
+  assert.equal(pack.n[202].name, 'Test NPC 202');
+});
+
+test('targets use the nearest objective spawn, item source, starter fallback or finisher', () => {
+  const v = locationAddon();
+  v.run('p=AzerothCoach.player;p.x=.5;p.y=.5;p.active={[101]={}};q=AzerothCoach.Data.quests[101];q.objectives={{{202}},{{203}}};q.finish={{203}}');
+  const row = () => parseContext(v.value('AzerothCoach.State.Context(p)')).facts.q[101];
+  assert.deepEqual(row().target, { id: 202, kind: 'n' });
+  assert.equal(row().d, 100);
+  v.run('C_Map.GetMapWorldSize=function() return 2000,1000 end; AzerothCoach.Geo.scales={}');
+  assert.deepEqual(row().target, { id: 203, kind: 'o' });
+  assert.equal(row().d, 100);
+  v.run('q.objectives={nil,nil,{{301}}}');
+  assert.deepEqual(row().target, { id: 203, kind: 'o' });
+  v.run('q.objectives={nil,nil,nil,nil,{{{202},202}}}');
+  assert.deepEqual(row().target, { id: 202, kind: 'n' });
+  v.run('q.objectives={{{999}}}');
+  assert.deepEqual(row().target, { id: 201, kind: 'n' });
+  v.run('p.active[101].complete=true');
+  assert.deepEqual(row().target, { id: 203, kind: 'n' });
+  v.run('q.finish={nil,{203}}');
+  assert.deepEqual(row().target, { id: 203, kind: 'o' });
+  v.run('q.finish=nil');
+  assert.equal(row().target, undefined);
+});
+
+test('target facts omit distance and direction on another map or without a player position', () => {
+  const v = locationAddon();
+  v.run('p=AzerothCoach.player;p.x=.5;p.y=.5;p.active={[101]={}};q=AzerothCoach.Data.quests[101];q.objectives={{{202}}};targetSpawns[202]={[1581]={{60,50}}}');
+  const row = () => parseContext(v.value('AzerothCoach.State.Context(p)')).facts.q[101];
+  assert.deepEqual(row().target, { id: 202, kind: 'n' });
+  assert.equal(row().d, undefined); assert.equal(row().dir, undefined);
+  v.run('targetSpawns[202]={[20]={{60,50}}};p.x=nil');
+  assert.equal(row().d, undefined); assert.equal(row().dir, undefined);
+  v.run('p.x=.6;p.y=.5');
+  assert.equal(row().d, 0); assert.equal(row().dir, undefined);
+  v.run('C_Map.GetMapWorldSize=nil;C_Map.GetWorldPosFromMapPos=nil');
+  assert.equal(row().d, undefined); assert.equal(row().dir, undefined);
+});
+
+test('facts stay within 1800 bytes and drop farther targets before nearer targets', () => {
+  const v = locationAddon();
+  v.run(`
+    p=AzerothCoach.player;p.x=.5;p.y=.5;p.active={};AzerothCoach.Data.dungeons={}
+    for id=401,412 do
+        AzerothCoach.Data.quests[id]={id=id,name=string.rep("é",20)..id,level=12,objectives={{{id}}}}
+        p.active[id]={};targetSpawns[id]={[20]={{50+(413-id)*2,50}}}
+    end
+  `);
+  const pack = parseContext(v.value('AzerothCoach.State.Context(p)')).facts;
+  assert.ok(Buffer.byteLength(v.value('AzerothCoach.State.JSON(AzerothCoach.Data.Facts(p))')) <= 1800);
+  assert.ok(Object.keys(pack.q).length > 0);
+  const retained = Object.entries(pack.q).filter(([, q]) => q.target).map(([id]) => Number(id));
+  assert.ok(retained.length > 0 && retained.length < 12, JSON.stringify(pack));
+  assert.ok(retained.includes(412));
+  assert.ok(retained.every(id => id > 412 - retained.length));
+  assert.equal(pack.q[401]?.target, undefined);
+});
 test('all nine trigger templates use facts and stay inside the visible length limits', () => {
   const v = addon();
   v.run(`
@@ -473,4 +581,19 @@ test('combat extends fallback waits and several pending questions share a slot r
   v.run('STUB.now=started+120;AzerothCoach.Link.Tick()');
   assert.deepEqual(JSON.parse(v.value('AzerothCoach.State.JSON(polls)')), [5, 120]);
   assert.equal(v.value('AzerothCoach.Link.pending[id].started'), v.value('started+100'));
+});
+
+test('target ranking calls the map APIs once for each map, not once for each spawn', () => {
+  const v = locationAddon();
+  v.run(`local many = {}; for i = 1, 300 do many[i] = {i % 100, (i * 7) % 100} end
+    targetSpawns[202] = {[20] = many}
+    p=AzerothCoach.player;p.x=.5;p.y=.5;p.active={[101]={}};q=AzerothCoach.Data.quests[101];q.objectives={{{202}}}
+    rectCalls = 0; local rect = C_Map.GetMapRectOnMap
+    C_Map.GetMapRectOnMap = function(...) rectCalls = rectCalls + 1; return rect(...) end
+    AzerothCoach.Geo.scales = {}`);
+  v.run('AzerothCoach.State.Context(p)');
+  const first = Number(v.value('rectCalls'));
+  assert.ok(first < 20, `first context used ${first} map rect calls`);
+  v.run('rectCalls = 0; AzerothCoach.State.Context(p)');
+  assert.ok(Number(v.value('rectCalls')) < 10);
 });

@@ -34,5 +34,25 @@ function G.Heading(p, target)
     end
     if not w or not h or w <= 0 or h <= 0 then return end
     local east, south = (tx - x) * w, (ty - y) * h
-    return math.sqrt(east ^ 2 + south ^ 2), math.atan2(-east, -south)
+    return math.sqrt(east ^ 2 + south ^ 2), math.atan2(-east, -south), east, south
+end
+
+-- Yards for the full width and height of one map. The size of a map does not change, so keep it.
+G.scales = {}
+function G.Scale(map)
+    if not map then return end
+    if G.scales[map] == nil then
+        local w = G.Heading({map = map, x = 0, y = 0}, {map = map, x = 1, y = 0})
+        local h = G.Heading({map = map, x = 0, y = 0}, {map = map, x = 0, y = 1})
+        G.scales[map] = (w and h and w > 0 and h > 0) and {w, h} or false
+    end
+    local scale = G.scales[map]
+    if scale then return scale[1], scale[2] end
+end
+
+function G.Direction(east, south)
+    if not east or not south or (east == 0 and south == 0) then return end
+    local names = {"north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"}
+    local index = math.floor(math.atan2(east, -south) / (math.pi / 4) + 0.5) % 8
+    return names[index + 1]
 end

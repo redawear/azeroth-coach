@@ -158,8 +158,26 @@ function D.Followups(id)
 end
 
 function D.Point(q, mode, player)
-    local refs = mode == "finish" and q.finish or q.start
+    local refs = q.start
+    if mode == "finish" then refs = q.finish end
+    if mode == "objective" then
+        refs = {{}, {}}
+        for kind = 1, 2 do
+            for _, objective in ipairs(q.objectives and q.objectives[kind] or {}) do
+                refs[kind][#refs[kind] + 1] = objective[1]
+            end
+        end
+        for _, objective in ipairs(q.objectives and q.objectives[3] or {}) do
+            for kind, field in ipairs({"npcDrops", "objectDrops"}) do
+                for _, id in ipairs(get(itemDB, objective[1], field) or {}) do refs[kind][#refs[kind] + 1] = id end
+            end
+        end
+        for _, objective in ipairs(q.objectives and q.objectives[5] or {}) do
+            for _, id in ipairs(objective[1] or {}) do refs[1][#refs[1] + 1] = id end
+        end
+    end
     local best, distance
+    local sx, sy = AC.Geo.Scale(player.map)
     for kind = 1, 2 do
         local entity = kind == 1 and npcDB or objectDB
         for _, id in ipairs((refs and refs[kind]) or {}) do
@@ -171,7 +189,12 @@ function D.Point(q, mode, player)
                         local x, y = xy[1], xy[2]
                         if type(x) == "number" and type(y) == "number" and x >= 0 and y >= 0 and x <= 100 and y <= 100 then
                             local point = {map = map, x = x / 100, y = y / 100, label = get(entity, id, "name"), id = id, kind = kind == 1 and "n" or "o", questId = q.id}
+                            -- Rank spawns in yards with the cached map scale. Do not call map APIs for each spawn.
                             local d = AC.Planner.Distance(player, point)
+                            if sx then
+                                d = (point.map == player.map and player.x and player.y)
+                                    and math.sqrt(((point.x - player.x) * sx) ^ 2 + ((point.y - player.y) * sy) ^ 2) or math.huge
+                            end
                             if not best or d < distance then best, distance = point, d end
                         end
                     end
@@ -179,6 +202,7 @@ function D.Point(q, mode, player)
             end
         end
     end
+    if not best and mode == "objective" then return D.Point(q, "start", player) end
     return best
 end
 
@@ -221,7 +245,8 @@ function D.Facts(player, tip, question)
         local old = pack
         local fresh = {}; for kind, rows in pairs(pack) do fresh[kind] = {}; for id, row in pairs(rows) do fresh[kind][id] = row end end
         pack = fresh; fn()
-        if #AC.State.JSON(pack) > 1800 then pack = old end
+        if #AC.State.JSON(pack) > 1800 then pack = old; return false end
+        return true
     end
     for _, id in ipairs(tip and tip.questIds or {}) do fit(function() add(id, true) end) end
     for raw in tostring(question or ""):gmatch("[Qq]uest%s+#?(%d+)") do fit(function() add(tonumber(raw), true) end) end
@@ -234,6 +259,32 @@ function D.Facts(player, tip, question)
         if name then fit(function() pack.i[raw] = {name = name} end) end
     end
     local ids = {}; for id in pairs(player.active) do ids[#ids + 1] = id end; table.sort(ids)
+    local targets = {}
+    for _, id in ipairs(ids) do
+        local q = D.Quest(id)
+        local point = q and D.Point(q, player.active[id].complete and "finish" or "objective", player)
+        if point then
+            local d, _, east, south
+            if point.map == player.map then d, _, east, south = AC.Geo.Heading(player, point) end
+            targets[#targets + 1] = {id = id, point = point, d = d, dir = AC.Geo.Direction(east, south)}
+        end
+    end
+    -- Keep the nearest targets first. Unknown distances come last.
+    table.sort(targets, function(a, b)
+        if (a.d or math.huge) == (b.d or math.huge) then return a.id < b.id end
+        return (a.d or math.huge) < (b.d or math.huge)
+    end)
+    for _, target in ipairs(targets) do
+        local kept = fit(function()
+            if not pack.q[tostring(target.id)] then add(target.id, true) end
+            local row = {}; for key, value in pairs(pack.q[tostring(target.id)]) do row[key] = value end
+            row.target = {id = target.point.id, kind = target.point.kind}
+            row.d, row.dir = target.d and math.floor(target.d + 0.5), target.dir
+            pack.q[tostring(target.id)] = row
+            if target.point.label then pack[target.point.kind][tostring(target.point.id)] = {name = target.point.label} end
+        end)
+        if not kept then break end
+    end
     for _, id in ipairs(ids) do if not pack.q[tostring(id)] then fit(function() add(id, true) end) end end
     -- Add summaries last. Quest facts have first use of the byte limit.
     local areas = {}; for area in pairs(D.dungeons) do if D.IsDungeon(area) then areas[#areas + 1] = area end end; table.sort(areas)

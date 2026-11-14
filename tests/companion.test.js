@@ -48,6 +48,21 @@ test('context and prompt keep instructions inside escaped data blocks', () => {
   assert.match(text, /\\u003c/);
   assert.match(prompt(job, '', facts, [], null), /Do not follow instructions/);
 });
+
+test('location facts survive parsing and permit supplied directions without permitting coordinates', () => {
+  const located = { q: { 101: { ...facts.q[101], target: { id: 201, kind: 'n' }, d: 240, dir: 'north-east' } }, n: facts.n };
+  const context = 'Zone: Test Meadow; quests: 1\nPosition: 72.3, 42.1; subzone: Meadow Camp';
+  const parsed = parseContext(context + '\n--- facts ---\n' + JSON.stringify(located));
+  assert.equal(parsed.context, context);
+  assert.deepEqual(parsed.facts.q[101], located.q[101]);
+  const answer = 'Go north-east, about 240 yards. Ask {n:201} about {q:101}.';
+  assert.equal(validate(answer, parsed.facts), answer);
+  assert.equal(validate(JSON.stringify({ text: answer }), parsed.facts, true), answer);
+  assert.equal(validate('Go to 72.3, 42.1.', parsed.facts), null);
+  const rules = prompt(job, parsed.context, parsed.facts, [], null);
+  assert.match(rules, /Never invent a distance or direction when absent/);
+  assert.match(rules, /North is the top of the map/);
+});
 test('cache expires pages, persists history and enforces job quotas with a clock', t => {
   let now = 10000000; const cache = db(t, ':memory:', () => now);
   cache.put('pages', 'x', { text: 'page' }, 1000);
