@@ -26,9 +26,13 @@ test('the PE patch changes only the x64 subsystem field and rejects invalid file
 });
 test('detection uses the registry first, filters client folders, and checks both CLIs', t => {
   const { dir, client } = fixture(t);
-  const result = detect({ registry: [dir], env: {}, resolve: provider => { if (provider === 'codex') throw new Error('Absent'); } });
+  const result = detect({ registry: [dir], fallbackRoots: [], env: {}, resolve: provider => { if (provider === 'codex') throw new Error('Absent'); } });
   assert.equal(result.client, client); assert.deepEqual(result.clients, [client]);
   assert.equal(result.claude, true); assert.equal(result.codex, false);
+  const fallback = path.join(dir, 'World of Warcraft', '_forever_'); fs.mkdirSync(fallback, { recursive: true });
+  fs.writeFileSync(path.join(fallback, 'Wow.exe'), '');
+  const injected = detect({ registry: [dir], fallbackRoots: [dir], env: {}, resolve: () => {} });
+  assert.deepEqual(injected.clients, [client, fallback]);
   const roots = detect({ registry: ['/registry'], env: { ProgramFiles: '/programs' }, exists: () => true, resolve: () => {} });
   assert.equal(roots.clients[0], '/registry'); assert.ok(roots.clients.includes(path.join('/programs', 'World of Warcraft', '_forever_')));
 });

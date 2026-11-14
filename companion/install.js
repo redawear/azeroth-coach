@@ -19,14 +19,15 @@ function powershell(action, env = {}) {
 function validClient(client) {
   return path.basename(client).toLowerCase() === '_forever_' && fs.existsSync(path.join(client, 'Wow.exe')) && fs.statSync(path.join(client, 'Wow.exe')).isFile();
 }
-function detect({ env = process.env, registry, exists = validClient, resolve = resolveCommand } = {}) {
+function detect({ env = process.env, registry, exists = validClient, resolve = resolveCommand,
+  fallbackRoots = [env['ProgramFiles(x86)'], env.ProgramFiles, 'C:\\Games', 'D:\\Games', 'D:\\', 'C:\\'] } = {}) {
   if (!registry) {
     try { registry = process.platform === 'win32' ? JSON.parse(powershell('registry')) : []; } catch { registry = []; }
   }
   if (!Array.isArray(registry)) registry = [];
   registry = registry.filter(dir => typeof dir === 'string' && dir.length > 0);
   const candidates = registry.flatMap(dir => [dir, path.join(dir, '_forever_'), path.join(dir, '..', '_forever_')]);
-  for (const root of [env['ProgramFiles(x86)'], env.ProgramFiles, 'C:\\Games', 'D:\\Games', 'D:\\', 'C:\\'].filter(Boolean)) {
+  for (const root of fallbackRoots.filter(Boolean)) {
     for (const name of ['World of Warcraft', 'World of Warcraft Forever', 'WoW']) candidates.push(path.join(root, name, '_forever_'));
   }
   const clients = [...new Set(candidates.filter(exists))];
