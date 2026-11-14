@@ -68,6 +68,32 @@ test('dungeon windows use medians, skip missing levels and keep completed chain 
   assert.equal(v.value('AzerothCoach.Planner.Dungeon({q[6]},p,get).inRange'), 'false');
   assert.equal(v.value('AzerothCoach.Planner.Dungeon({},p,get).inRange'), 'false');
 });
+test('dungeon next steps skip closed first steps and can use an active prerequisite', () => {
+  const v = planner();
+  v.run(`
+    q[1].minLevel=15;q[2].all=nil
+    plan=AzerothCoach.Planner.Dungeon({q[1],q[2]},p,get)
+  `);
+  assert.equal(v.value('plan.total'), '2');
+  assert.equal(v.value('plan.nextStep.quest.id'), '2');
+  v.run('q[2].all={1};p.active[1]={};plan=AzerothCoach.Planner.Dungeon({q[2]},p,get)');
+  assert.equal(v.value('plan.nextStep.chain[1].id'), '1');
+  v.run('p.active={};plan=AzerothCoach.Planner.Dungeon({q[2]},p,get)');
+  assert.equal(v.value('plan.nextStep'), 'nil');
+});
+test('dungeon character counts ignore progress limits but availability keeps them', () => {
+  const v = planner();
+  for (const progress of ['exclusive={4}', 'nextQuest=4', 'untilQuest=4', 'disabledBy=4']) {
+    v.run(`p.completed={[4]=true};p.active={[4]={}};x={id=99,minLevel=10,level=12,${progress}};plan=AzerothCoach.Planner.Dungeon({x},p,function() return x end)`);
+    assert.equal(v.value('plan.total'), '1', progress);
+    assert.equal(v.value('plan.nextStep'), 'nil', progress);
+    assert.equal(v.value('AzerothCoach.Planner.Available(x,p)'), 'false', progress);
+  }
+  for (const limit of ['races=2', 'classes=2', 'maxLevel=11', 'skill={55,50}', 'ranks={{55,50}}', 'spell=55', 'minRep={55,100}']) {
+    v.run(`x={id=99,${limit}};plan=AzerothCoach.Planner.Dungeon({x},p,function() return x end)`);
+    assert.equal(v.value('plan.total'), '0', limit);
+  }
+});
 test('trigger priority, pause, dedup, permanent gray suppression, death window and hide rules', () => {
   const v = planner();
   v.run('saved={seen={}};settings={tipPause=600}; tips={{kind="zone",key="z"},{kind="dungeon",key="d"}}');

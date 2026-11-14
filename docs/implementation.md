@@ -81,6 +81,8 @@ Build a reverse index for prerequisites and breadcrumbs. Read race masks from `L
 **Planner.** `ChainOf(questId)`, `ChainsInZone(areaId, player)`, `DungeonPlan(areaId, player)`, `NextStep(questId)`, `LowValue(log)`. A quest is done, in the log, open, or blocked (level, race, class, prerequisite).
 Dungeon counts use quests that fit the character limits, such as race, class, profession, and reputation.
 Quest progress and prerequisites do not remove quests from these counts. This keeps completed chain steps in the total.
+Character limits and quest progress have separate checks. Availability uses both checks.
+The plan also selects the first missing quest with a chain whose first step is open or active.
 The lower level bound is the median positive `requiredLevel`. The upper bound is the median positive `questLevel`, plus 3.
 For an even count, use the mean of the two middle values. Round the lower bound down and the median `questLevel` up to whole levels. Ignore missing and zero levels.
 Both bounds must exist. Include both bounds in the window. Store no level table.
@@ -92,7 +94,9 @@ The list includes the separate Stratholme and Dire Maul rows. It excludes transi
 Blackrock Spire stays out because its row combines 5-player and 10-player areas.
 Use the first entrance zone in dungeon row field 4. Map its area ID through the QuestieDB area-to-map tables.
 Offer tips only when `Geo.Continent` gives the same known continent for the entrance and the player.
-Check queued offers again before display. A map change, level change, or completed quest can stop a queued offer.
+Queue the dungeon area. Resolve its title, text, quest IDs, and question state before each offer or display.
+A map change, level change, completed quest, or saved answer can change or stop a queued offer.
+Reuse each dungeon plan while the player snapshot table stays the same. Recheck saved answers on each resolution.
 Ask no question when completed quests are half or more of the total that fits the character.
 Show completed quests in both the question and later tips.
 AI facts include each supported dungeon in the level window, with its name, completed count, and total.
@@ -116,6 +120,7 @@ Reda must check these instances in the game before support is added.
 - Merge event bursts into one snapshot. Keep event times, and discard a death event after 10 minutes.
 
 **Tip flow.** Trigger, facts, template text. If the companion is online and the limit allows, the addon asks for an AI tip and waits 12 seconds maximum. Then it shows the AI tip, or the template. It never changes a tip that is on the screen. A late AI tip goes to the cache only.
+Tips hold no positions. Positions still help rank quests and supply AI target facts.
 
 ## 5. Coach UI: quiet, part of the quest list
 
@@ -161,7 +166,9 @@ The menu item `Dock to quest tracker` restores the default.
 **Minimap button.** Start at 225 degrees, on the bottom-left edge. Left-drag moves it along the edge.
 Save its angle and visibility for each character. Left-click uses the same chat toggle as `/coach`.
 Right-click opens the Coach menu. A small dot marks a waiting tip or a tip in a hidden or collapsed block.
-Opening the chat clears the dot for those tips. A new tip can show it again. Dismiss and expiry clear it.
+Only the chat-open action marks the current tips as read. A refresh does not change their read state.
+A tip that arrives while the chat is open stays unread. A screenshot restore does not mark tips as read.
+Dismiss and expiry clear the dot.
 The first chat close or tip dismiss prints one hint about `/coach` and the button. Screenshot capture does not print it.
 
 ## 6. Chat UI

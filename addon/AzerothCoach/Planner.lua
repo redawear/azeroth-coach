@@ -30,23 +30,13 @@ local function listDone(ids, player, all)
     return all
 end
 
-function P.Restrictions(q, player, future, ignoreProgress)
+function P.CharacterLimits(q, player, future)
     if not q then return false, "Quest data is missing." end
     if not hasBit(q.races, player.raceBit) or not hasBit(q.classes, player.classBit) then
         return false, "This quest has a race or class limit."
     end
     if not future and (q.minLevel or 0) > player.level then return false, "Your level is too low." end
     if (q.maxLevel or 0) > 0 and player.level > q.maxLevel then return false, "You are above the level limit." end
-    if not ignoreProgress then
-        for _, id in ipairs(q.exclusive or {}) do
-            if player.active[id] or P.Completed(player, id) then return false, "A different quest branch is active or complete." end
-        end
-        for _, id in ipairs({q.nextQuest or 0, q.untilQuest or 0}) do
-            if id > 0 and P.Completed(player, id) then return false, "This quest is no longer available." end
-        end
-        if (q.nextQuest or 0) > 0 and player.active[q.nextQuest] then return false, "The next quest is already active." end
-        if (q.disabledBy or 0) > 0 and player.active[q.disabledBy] then return false, "An active quest blocks this quest." end
-    end
     if q.skill and #q.skill > 0 and (player.skills[q.skill[1]] or 0) < (q.skill[2] or 1) then
         return false, "The required profession rank is not known."
     end
@@ -71,6 +61,24 @@ function P.Restrictions(q, player, future, ignoreProgress)
         end
     end
     return true
+end
+
+function P.ProgressLimits(q, player)
+    for _, id in ipairs(q.exclusive or {}) do
+        if player.active[id] or P.Completed(player, id) then return false, "A different quest branch is active or complete." end
+    end
+    for _, id in ipairs({q.nextQuest or 0, q.untilQuest or 0}) do
+        if id > 0 and P.Completed(player, id) then return false, "This quest is no longer available." end
+    end
+    if (q.nextQuest or 0) > 0 and player.active[q.nextQuest] then return false, "The next quest is already active." end
+    if (q.disabledBy or 0) > 0 and player.active[q.disabledBy] then return false, "An active quest blocks this quest." end
+    return true
+end
+
+function P.Restrictions(q, player, future)
+    local ok, why = P.CharacterLimits(q, player, future)
+    if not ok then return false, why end
+    return P.ProgressLimits(q, player)
 end
 
 function P.Available(q, player)
@@ -179,7 +187,7 @@ function P.Dungeon(quests, player, getQuest)
     local minimums, levels = {}, {}
     for _, q in ipairs(quests) do
         -- Count quests by character limits. Quest progress must not erase completed chain steps.
-        if P.Restrictions(q, player, true, true) then
+        if P.CharacterLimits(q, player, true) then
             out.total = out.total + 1
             if (q.minLevel or 0) > 0 then minimums[#minimums + 1] = q.minLevel end
             if (q.level or 0) > 0 then levels[#levels + 1] = q.level end
@@ -187,7 +195,10 @@ function P.Dungeon(quests, player, getQuest)
             elseif player.active[q.id] then out.active = out.active + 1
             else
                 local chain, why = P.Chain(q.id, player, getQuest)
-                out.missing[#out.missing + 1] = {quest = q, chain = chain, reason = why}
+                local missing = {quest = q, chain = chain, reason = why}
+                out.missing[#out.missing + 1] = missing
+                local step = chain and chain[1]
+                if not out.nextStep and step and (player.active[step.id] or P.Available(step, player)) then out.nextStep = missing end
             end
         end
     end

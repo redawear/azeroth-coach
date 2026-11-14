@@ -88,6 +88,7 @@ function W.Refresh()
     if atEnd then W.scroll:SetVerticalScroll(math.max(0, y - W.scroll:GetHeight())) else W.scroll:SetVerticalScroll(oldScroll) end
 end
 function W.Open(tip)
+    AC.MinimapButton.MarkRead()
     W.tip = tip; W.dirty = true; W.frame:Show(); W.Refresh(); W.input:SetFocus()
     if not AC.Link.signals and not AC.Link.IsOnline() then AC.Link.Hello() end
 end

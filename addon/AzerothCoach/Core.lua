@@ -29,30 +29,44 @@ local function windowOpen()
     end
     return false
 end
-function AC.Offer(tip)
-    if not tip or AC.waiting or AC.offering then return end
-    if tip.dungeon and not AC.Tips.DungeonPlan(tip.dungeon, AC.player, AC.db) then return end
-    if AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) or windowOpen() then
-        AC.waiting = tip; AC.MinimapButton.Refresh(); return
+function AC.Offer(subject, ready)
+    if not subject or AC.waiting or AC.offering then return end
+    if subject.dungeon and subject.title then
+        subject = {kind = subject.kind, key = subject.key, dungeon = subject.dungeon, createdAt = subject.createdAt}
     end
-    local token = {}; AC.offerToken = token; AC.offering = true
-    local displayed = false
-    local function deliver(reply)
+    local token = {}; AC.offerToken = token
+    local displayed, valid, requestPlayer = false, false, nil
+    local function deliver(reply, complete)
         if displayed or AC.offerToken ~= token then return end
-        displayed = true; AC.offering = false
-        if reply and reply.status == "done" and type(reply.text) == "string" then
+        local tip = subject
+        if subject.dungeon then
+            tip = AC.Tips.ResolveDungeon(subject.dungeon, AC.player, AC.db)
+            if tip then tip.createdAt = subject.createdAt end
+        end
+        if not tip then displayed = true; AC.offering = false; return end
+        valid = true
+        if reply and reply.status == "done" and type(reply.text) == "string" and (not subject.dungeon or requestPlayer == AC.player) and not tip.question then
             tip.body = AC.Limit(AC.Data.Expand(reply.text), 110)
             tip.from = AC.Link.provider == "codex" and "Codex" or "Claude"
         end
-        if AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) or windowOpen() then AC.waiting = tip; AC.MinimapButton.Refresh()
-        else AC.CoachSection.Show(tip) end
+        if AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) or windowOpen() then
+            displayed = true; AC.offering = false; AC.waiting = subject; AC.MinimapButton.Refresh(); return
+        end
+        if not complete and AC.Link.IsOnline() and not tip.question then
+            AC.offering = true; requestPlayer = AC.player
+            local context = AC.State.Context(AC.player, tip, "")
+            local id = AC.Link.Send("coach", context, tip.body, function(answer) deliver(answer, true) end, false, tip.key)
+            if id then C_Timer.After(12, function() deliver(nil, true) end); return end
+        end
+        displayed = true; AC.offering = false
+        if subject.dungeon then
+            for key, value in pairs(tip) do subject[key] = value end
+            tip = subject
+        end
+        AC.CoachSection.Show(tip)
     end
-    if AC.Link.IsOnline() and not tip.question then
-        local context = AC.State.Context(AC.player, tip, "")
-        local id = AC.Link.Send("coach", context, tip.body, deliver, false, tip.key)
-        if id then C_Timer.After(12, function() deliver() end); return end
-    end
-    deliver()
+    deliver(nil, ready)
+    return valid
 end
 function AC.Update(event, argument, occurredAt)
     if not AC.db then return end
@@ -96,15 +110,19 @@ function AC.TryOffer()
         if (tip.kind == "level" or tip.kind == "spells") and tonumber(tip.key:match(":(%d+)$")) ~= AC.player.level then old = true end
         if tip.kind == "zone" and tip.key ~= "zone:" .. tostring(AC.player.area or AC.player.zone) then old = true end
         if tip.kind == "capital" and tip.key ~= "capital:" .. tostring(AC.player.area) then old = true end
-        if tip.dungeon and not AC.Tips.DungeonPlan(tip.dungeon, AC.player, AC.db) then old = true end
         local first = tip.questIds and tip.questIds[1]
         if tip.kind == "turnin" and first and (AC.player.active[first] or AC.Planner.Completed(AC.player, first)) then old = true end
         if tip.kind == "gray" and first and not AC.player.active[first] then old = true end
         if old or (AC.db.seen[key] and time() - AC.db.seen[key] < 86400) then AC.candidates[key] = nil
         else candidates[#candidates+1] = tip end
     end
-    local tip = AC.Triggers.Choose(candidates, AC.db, time(), AC.db.settings)
-    if tip then AC.candidates[tip.key] = nil; AC.Offer(tip) end
+    while #candidates > 0 do
+        local tip = AC.Triggers.Choose(candidates, AC.db, time(), AC.db.settings)
+        if not tip then return end
+        AC.candidates[tip.key] = nil
+        if AC.Offer(tip) then return end
+        for i, row in ipairs(candidates) do if row == tip then table.remove(candidates, i); break end end
+    end
 end
 local function tick()
     if not AC.db then return end
@@ -127,10 +145,9 @@ local function tick()
     AC.player.taxi = AC.State.Try("UnitOnTaxi", UnitOnTaxi, "player") or false
     end
     if AC.waiting and time() - AC.waiting.createdAt >= 300 then AC.waiting = nil end
-    if not AC.flags.combat and AC.waiting and AC.waiting.dungeon and not AC.Tips.DungeonPlan(AC.waiting.dungeon, AC.player, AC.db) then AC.waiting = nil end
-    if AC.waiting and not AC.Triggers.Hidden(AC.player, AC.flags, AC.db, time()) and not windowOpen() then
+    if not AC.flags.combat and AC.waiting then
         local tip = AC.waiting; AC.waiting = nil
-        if time() - tip.createdAt < 300 then AC.CoachSection.Show(tip) end
+        AC.Offer(tip, true)
     end
     local c = AC.CoachSection
     local age = AC.db.settings.tipAge

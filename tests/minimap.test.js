@@ -118,6 +118,18 @@ test('badge marks a queued tip and clears on queue expiry or dismissal', () => {
   assert.equal(badge(v), 'false');
 });
 
+test('a tip that arrives while chat is open stays unread through refresh and screenshot restore', () => {
+  const v = addon();
+  v.run('C.Dismiss();AzerothCoach.candidates={};AzerothCoach.tipEvents={};W.Open();AzerothCoach.flags.cinematic=true;AzerothCoach.Offer({key="new",createdAt=time()});M.Refresh()');
+  assert.equal(badge(v), 'true');
+  v.run('W.HideForShot();W.ResumeShot();M.Refresh();W.frame:Hide();M.Refresh()');
+  assert.equal(badge(v), 'true');
+  v.run('W.Open()');
+  assert.equal(badge(v), 'false');
+  v.run('W.frame:Hide();M.Refresh()');
+  assert.equal(badge(v), 'false');
+});
+
 test('badge clears when a hidden tip expires without a close hint', () => {
   const v = addon();
   v.run('C.frame:ToggleCollapsed();AzerothCoach.candidates={};AzerothCoach.tipEvents={};STUB.Advance(601)');

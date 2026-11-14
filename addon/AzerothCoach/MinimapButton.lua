@@ -15,10 +15,13 @@ local function drag()
     AC.db.minimap.angle = math.deg(math.atan2(y / scale - cy, x / scale - cx)) % 360
     M.Position()
 end
+function M.MarkRead()
+    M.readTip, M.readWaiting = AC.CoachSection.tip, AC.waiting
+    M.Refresh()
+end
 function M.Refresh()
     if not M.frame then return end
     local c = AC.CoachSection
-    if AC.ChatWindow.frame:IsShown() then M.readTip, M.readWaiting = c.tip, AC.waiting end
     local function unread(tip) return tip and tip ~= M.readTip and tip ~= M.readWaiting end
     local hidden = not c.frame:IsShown() or not c.block:IsShown()
     M.frame.badge:SetShown(unread(AC.waiting) or (hidden and unread(c.tip)) or false)

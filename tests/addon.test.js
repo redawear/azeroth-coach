@@ -51,6 +51,107 @@ function dungeonAddon() {
     LibQuestieDB.Support.Get=function() return fixtureZones end
   `);
 }
+test('dungeon counts keep a blocked branch and the tip uses the next usable quest', () => {
+  const v = dungeonAddon();
+  v.run(`
+    AC=AzerothCoach;C=AC.CoachSection;C.Dismiss();AC.db.seen={};AC.db.settings.tipPause=0
+    AC.player=AC.State.Read();AC.player.active[302]={}
+    AC.Data.Quest(301).exclusive={302}
+    plan=AC.Planner.Dungeon(AC.Data.InZone(1581),AC.player,AC.Data.Quest)
+    AC.candidates={};for _,tip in ipairs(AC.Tips.Build("PLAYER_LOGIN",AC.player,nil,AC.db)) do AC.candidates[tip.key]=tip end
+    AC.TryOffer()
+  `);
+  assert.equal(v.value('plan.total'), '4');
+  assert.equal(v.value('plan.active'), '1');
+  assert.equal(v.value('plan.completed'), '0');
+  assert.equal(v.value('#plan.missing'), '3');
+  assert.equal(v.value('C.tip and C.tip.questIds[1]'), '303');
+  assert.equal(v.value('plan.nextStep.quest.id'), '303');
+});
+test('queued dungeon tips use current counts, quest IDs and saved answers', () => {
+  for (const queue of ['candidate', 'waiting']) {
+    const v = dungeonAddon();
+    v.run(`
+      AC=AzerothCoach;C=AC.CoachSection;subject=C.tip;C.Dismiss()
+      AC.candidates={};AC.tipEvents={};AC.db.seen={};AC.db.settings.tipPause=0
+      AC.player=AC.State.Read();AC.player.completed[301]=true;AC.db.dungeons["1581"]="yes"
+      AC.State.Read=function() return AC.player end
+      AC.Link.IsOnline=function() return false end
+      if "${queue}"=="candidate" then AC.candidates[subject.key]=subject;AC.TryOffer()
+      else AC.waiting=subject;STUB.Advance(1) end
+    `);
+    assert.match(v.value('C.tip.body'), /You finished 1 of 4 quests/);
+    assert.match(v.value('C.tip.body'), /The next quest is \{q:302\}/);
+    assert.equal(v.value('C.tip.questIds[1]'), '302');
+    assert.equal(v.value('C.tip.question'), 'false');
+    assert.equal(v.value('C.tip.title'), 'The Deadmines');
+    assert.equal(v.value('C.tip.createdAt'), v.value('subject.createdAt'));
+  }
+});
+test('an unchanged waiting dungeon tip does no new chain work across ticks', () => {
+  const v = dungeonAddon();
+  v.run(`
+    AC=AzerothCoach;subject=AC.CoachSection.tip;AC.CoachSection.Dismiss()
+    AC.candidates={};AC.tipEvents={};AC.flags.cinematic=true
+    AC.player=AC.State.Read();AC.State.Read=function() return AC.player end
+    chainCalls=0;local chain=AC.Planner.Chain
+    AC.Planner.Chain=function(...) chainCalls=chainCalls+1;return chain(...) end
+    AC.Offer(subject);initialCalls=chainCalls
+    for i=1,3 do STUB.Advance(1) end
+  `);
+  assert.equal(v.value('AC.waiting.key'), 'dungeon:1581');
+  assert.equal(Number(v.value('initialCalls')), 4);
+  assert.equal(v.value('chainCalls'), v.value('initialCalls'));
+});
+test('a read dungeon subject keeps its badge clear while waiting and after display', () => {
+  const v = dungeonAddon();
+  v.run(`
+    AC=AzerothCoach;subject=AC.CoachSection.tip;AC.CoachSection.Dismiss()
+    AC.candidates={};AC.tipEvents={};AC.flags.cinematic=true
+    AC.State.Read=function() return AC.player end
+    AC.Offer(subject);waiting=AC.waiting;AC.ChatWindow.Open();AC.ChatWindow.frame:Hide()
+    for i=1,3 do STUB.Advance(1) end
+  `);
+  assert.equal(v.value('AC.waiting == waiting'), 'true');
+  assert.equal(v.value('AC.waiting.title'), 'nil');
+  assert.equal(v.value('AC.waiting.questIds'), 'nil');
+  assert.equal(v.value('AC.MinimapButton.frame.badge:IsShown()'), 'false');
+  v.run('AC.db.collapsed=true;AC.flags.cinematic=false;STUB.Advance(1)');
+  assert.equal(v.value('AC.CoachSection.tip == waiting'), 'true');
+  assert.equal(v.value('AC.MinimapButton.frame.badge:IsShown()'), 'false');
+});
+test('an invalid dungeon subject does not block another usable candidate', () => {
+  const v = dungeonAddon();
+  v.run(`
+    AC=AzerothCoach;AC.CoachSection.Dismiss();AC.db.seen={};AC.db.settings.tipPause=0
+    AC.db.dungeons["1581"]="no"
+    AC.candidates={d={kind="dungeon",key="d",dungeon=1581,createdAt=time()},z={kind="zone",key="zone:40",title="Quests",body="A test tip.",createdAt=time()}}
+    AC.TryOffer()
+  `);
+  assert.equal(v.value('AC.CoachSection.tip.kind'), 'zone');
+});
+test('a delayed dungeon reply uses the current snapshot and cannot replace a new question', () => {
+  for (const change of ['snapshot', 'answer', 'blocked']) {
+    const v = dungeonAddon();
+    v.run(`
+      AC=AzerothCoach;C=AC.CoachSection;subject=C.tip;C.Dismiss()
+      AC.db.dungeons["1581"]="yes";AC.Link.IsOnline=function() return true end
+      AC.Link.Send=function(_,_,_,callback) answer=callback;return 1 end
+      AC.Offer(subject)
+      if "${change}"=="snapshot" then AC.player=AC.State.Read();AC.player.completed[301]=true
+      elseif "${change}"=="answer" then AC.db.dungeons["1581"]=nil
+      else AC.db.dungeons["1581"]="no" end
+      answer({status="done",text="An old AI answer."})
+    `);
+    assert.equal(v.value('AC.offering'), 'false');
+    if (change === 'blocked') assert.equal(v.value('C.tip'), 'nil');
+    else {
+      assert.equal(v.value('C.tip.from'), 'data');
+      assert.match(v.value('C.tip.body'), change === 'snapshot' ? /You finished 1 of 4 quests/ : /Do you want tips/);
+      assert.equal(v.value('C.tip.question'), change === 'answer' ? 'true' : 'false');
+    }
+  }
+});
 test('dungeon offers use the entrance continent and the quest median window', () => {
   const v = dungeonAddon();
   assert.equal(v.value('AzerothCoach.CoachSection.tip.dungeon'), '1581');
@@ -61,16 +162,19 @@ test('dungeon offers use the entrance continent and the quest median window', ()
     offers=function()
       local result={}
       for _,tip in ipairs(AzerothCoach.Tips.Build("PLAYER_LOGIN",p,nil,saved)) do
-        if tip.kind=="dungeon" then result[#result+1]=tip end
+        if tip.kind=="dungeon" then
+          tip=AzerothCoach.Tips.ResolveDungeon(tip.dungeon,p,saved)
+          if tip then result[#result+1]=tip end
+        end
       end
       return result
     end
     p.level=22;p.map=1442;kalimdor=offers()
   `);
   assert.equal(v.value('#kalimdor'), '0');
-  v.run('p.map=1436;p.level=17'); assert.equal(v.value('#offers()'), '0');
-  v.run('p.level=24'); assert.equal(v.value('#offers()'), '0');
-  v.run('p.level=20'); assert.equal(v.value('#offers()'), '1');
+  v.run('p=AzerothCoach.State.Read();p.level=17'); assert.equal(v.value('#offers()'), '0');
+  v.run('p=AzerothCoach.State.Read();p.level=24'); assert.equal(v.value('#offers()'), '0');
+  v.run('p=AzerothCoach.State.Read()'); assert.equal(v.value('#offers()'), '1');
   v.run('p.map=999'); assert.equal(v.value('#offers()'), '0');
   v.run('p.map=1436;fixtureZones.private.areaIdToUiMapId[40]=nil'); assert.equal(v.value('#offers()'), '0');
   v.run('fixtureZones.private.areaIdToUiMapId[40]=999'); assert.equal(v.value('#offers()'), '0');
@@ -80,19 +184,18 @@ test('transit areas, battlegrounds, raids and unverified Forever instances keep 
   for (const area of [2257, 3277, 2717, 16544]) {
     assert.equal(v.value(`AzerothCoach.Data.IsDungeon(${area})`), 'false');
     assert.equal(v.value(`#AzerothCoach.Data.InZone(${area})`), '1');
-    v.run('AzerothCoach.Data.dungeons[1581]=nil');
-    assert.equal(v.value('#AzerothCoach.Tips.Build("PLAYER_LOGIN",AzerothCoach.player,nil,{settings={},dungeons={}})'), '0');
+    assert.equal(v.value(`AzerothCoach.Tips.ResolveDungeon(${area},AzerothCoach.player,{settings={},dungeons={}})`), 'nil');
   }
 });
 test('dungeon questions show completed quests and stop when at least half are complete', () => {
   const v = dungeonAddon();
-  v.run('p=AzerothCoach.player;p.completed[301]=true;tips=AzerothCoach.Tips.Build("PLAYER_LOGIN",p,nil,{settings={},dungeons={}})');
-  assert.match(v.value('tips[1].body'), /You finished 1 of 4 quests/);
-  assert.ok(Buffer.byteLength(v.value('tips[1].body')) <= 110);
-  v.run('p.completed[302]=true');
-  assert.equal(v.value('#AzerothCoach.Tips.Build("PLAYER_LOGIN",p,nil,{settings={},dungeons={}})'), '0');
-  v.run('p.completed[303]=true');
-  assert.equal(v.value('#AzerothCoach.Tips.Build("PLAYER_LOGIN",p,nil,{settings={},dungeons={}})'), '0');
+  v.run('p=AzerothCoach.State.Read();p.completed[301]=true;tip=AzerothCoach.Tips.ResolveDungeon(1581,p,{settings={},dungeons={}})');
+  assert.match(v.value('tip.body'), /You finished 1 of 4 quests/);
+  assert.ok(Buffer.byteLength(v.value('tip.body')) <= 110);
+  v.run('p=AzerothCoach.State.Read();p.completed={[301]=true,[302]=true}');
+  assert.equal(v.value('AzerothCoach.Tips.ResolveDungeon(1581,p,{settings={},dungeons={}})'), 'nil');
+  v.run('p=AzerothCoach.State.Read();p.completed={[301]=true,[302]=true,[303]=true}');
+  assert.equal(v.value('AzerothCoach.Tips.ResolveDungeon(1581,p,{settings={},dungeons={}})'), 'nil');
 });
 test('four dungeon answers fit the block and save Yes, No, Later or Done it', () => {
   const v = dungeonAddon();
@@ -106,7 +209,7 @@ test('four dungeon answers fit the block and save Yes, No, Later or Done it', ()
     assert.equal(v.value('AzerothCoach.db.dungeons["1581"]'), i === 2 ? v.value('time()+3600') : (i === 0 ? 'yes' : 'no'));
     assert.equal(v.value('AzerothCoach.CoachSection.tip'), 'nil');
   });
-  assert.equal(v.value('#AzerothCoach.Tips.Build("PLAYER_LOGIN",AzerothCoach.player,nil,AzerothCoach.db)'), '0');
+  assert.equal(v.value('AzerothCoach.Tips.ResolveDungeon(1581,AzerothCoach.player,AzerothCoach.db)'), 'nil');
 });
 test('unanswered dungeon questions can repeat after 24 hours on a new dungeon check', () => {
   const v = dungeonAddon();
@@ -119,7 +222,7 @@ test('queued dungeon offers stop after a continent, level, completion or prefere
   for (const change of ['p.map=1442', 'p.level=24', 'p.completed[301]=true;p.completed[302]=true', 'AzerothCoach.db.dungeons["1581"]="no"']) {
     const v = dungeonAddon();
     v.run(`
-      p=AzerothCoach.player;tip=AzerothCoach.CoachSection.tip
+      p=AzerothCoach.State.Read();AzerothCoach.player=p;tip=AzerothCoach.CoachSection.tip
       AzerothCoach.CoachSection.Dismiss();AzerothCoach.db.seen={};AzerothCoach.db.settings.tipPause=0
       ${change}
       AzerothCoach.candidates={[tip.key]=tip};AzerothCoach.TryOffer()
@@ -346,9 +449,13 @@ test('all nine trigger templates use facts and stay inside the visible length li
     found={}
     local function collect(event,arg)
         for _,tip in ipairs(AzerothCoach.Tips.Build(event,p,nil,saved,arg)) do
+            if tip.dungeon then tip=AzerothCoach.Tips.ResolveDungeon(tip.dungeon,p,saved) end
+            if tip then
             found[tip.kind]=true
             assert(#AzerothCoach.Data.Expand(tip.title)<=32)
             assert(#AzerothCoach.Data.Expand(tip.body)<=110)
+            assert(tip.point==nil)
+            end
         end
     end
     collect("PLAYER_LEVEL_UP")
