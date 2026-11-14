@@ -45,6 +45,9 @@ Keep the wow-ai record, so the codec, the capture and their tests stay valid: `s
 
 - `chat` is `coach` or `chat`. `cwd` and `name` are empty. `flags` adds `job=coach|chat|deep`, `trig=<trigger id>`, and `shot`.
 - `ctx` holds the context lines (900 bytes maximum), then `--- facts ---`, then the facts pack (1,800 bytes maximum).
+- The context has a `Position` line after the zone: the player coordinates in percent and the subzone.
+- In the facts, each active quest row can have `target` (entity ID and kind), `d` (yards), and `dir` (8 compass points, north at the top of the map). The target comes from QuestieDB: the nearest objective spawn, else the start; the finish for a complete quest. Rank spawns with a yard scale that `Geo.Scale` keeps for each map. When the facts are full, drop the farthest targets first.
+- The AI can write the supplied distance and direction. It never writes coordinates, and `validate.js` rejects an answer with coordinates. The player sees no arrow.
 - `text` is the player message (400 characters maximum). For a coach job it is the template tip.
 - Reply in `AzerothCoach_SlotData.replies[]`: `chat, id, status ("working"|"done"|"error"), text, code, sources = { { label, url } }, by = "Claude Opus · medium"`. Error codes: `rate`, `auth`, `plan`, `timeout`, `invalid`, `shot`, `failed`.
   Optional `notes` hold the muted screenshot and Wowhead messages. `shotDone` restores the chat after a screenshot request.
