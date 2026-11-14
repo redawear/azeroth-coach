@@ -117,7 +117,7 @@ function L.Poll()
             AzerothCoach_SlotData = nil
             local ok, success = pcall(load, name)
             if ok and success then L.free = L.free - 1; L.Receive(AzerothCoach_SlotData)
-            else AC.Log("Cannot load " .. name .. ". Run npm run setup, then restart the game.") end
+            else AC.Log("Cannot load " .. name .. ". Run the Azeroth Coach installer again, then restart the game.") end
             return
         end
     end
@@ -187,16 +187,20 @@ function L.Tick()
     else hide() end
     local needsPoll = false
     for _, pending in pairs(L.pending) do
-        if not pending.sigAtStart and not pending.signalled and sound("sig", pending.id) then pending.signalled = true; needsPoll = true end
-        if pending.pollAt and GetTime() >= pending.pollAt then
-            needsPoll = true
-            pending.pollAt = ((not signalOK or pending.sigAtStart) and not pending.hello) and GetTime() + 15 or nil
-        end
         local deadline = pending.hello and 20 or (pending.job == "deep" and 360 or 180)
         if GetTime() - pending.started > deadline then
             L.pending[pending.id] = nil
             if AC.db.outbox and AC.db.outbox.id == pending.id then AC.db.outbox = nil end
             if not pending.hello and pending.callback then pending.callback({status = "error", code = "timeout", text = "No answer arrived. Ask again."}, pending) end
+        else
+            if not pending.sigAtStart and not pending.signalled and sound("sig", pending.id) then pending.signalled = true; needsPoll = true end
+            if pending.pollAt and GetTime() >= pending.pollAt then
+                needsPoll = true
+                if (not signalOK or pending.sigAtStart) and not pending.hello then
+                    local delay = pending.pollDelay or 15
+                    pending.pollAt = GetTime() + delay; pending.pollDelay = math.min(delay * 2, 60)
+                else pending.pollAt = nil end
+            end
         end
     end
     if needsPoll then L.Poll() end

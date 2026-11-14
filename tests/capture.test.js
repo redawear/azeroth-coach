@@ -36,3 +36,22 @@ test('Windows PowerShell decodes an image from the real Lua codec', { skip: proc
   const decoded = JSON.parse(output.trim().split('\n').pop());
   assert.equal(decoded.id, 42); assert.equal(decoded.text, payload);
 });
+test('capture logs a wait once until the window state changes', () => {
+  const { Capture } = require('../companion/supervisor');
+  const lines = [], messages = [];
+  const capture = new Capture({}, text => messages.push(text), text => lines.push(text));
+  const waiting = 'waiting for Wow window in _forever_';
+  const info = text => capture.receive(JSON.stringify({ info: text }));
+  for (let i = 0; i < 1200; i++) info(waiting);
+  assert.deepEqual(lines, [waiting]);
+  capture.receive('bad JSON'); capture.receive(JSON.stringify({ text: 'payload' })); capture.receive('{"clear":true}');
+  info(waiting); assert.deepEqual(lines, [waiting]);
+  assert.deepEqual(messages, ['payload']); assert.ok(capture.lastClear > 0);
+  info('attached to game (pid 123)'); info('attached to game (pid 123)');
+  info('game window lost');
+  for (let i = 0; i < 19; i++) info(waiting);
+  info('attached to game (pid 456)'); info('game window lost'); info(waiting);
+  assert.deepEqual(lines, [waiting, 'attached to game (pid 123)', 'game window lost', waiting, 'attached to game (pid 456)', 'game window lost', waiting]);
+  capture.receive('{"warn":"strip seen but rejected: checksum"}'); info(waiting);
+  assert.equal(lines.at(-1), 'strip seen but rejected: checksum');
+});

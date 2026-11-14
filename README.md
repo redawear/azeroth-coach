@@ -34,6 +34,9 @@ The companion has no console window or tray icon. Use `/coach doctor` to check t
 Uninstall keeps QuestieDB. It also keeps your settings and chat history unless you select their delete checkbox.
 See the [Windows test guide](docs/windows-test.md) for the first game session.
 
+The AddOn List shows 200 reply slots for Azeroth Coach. Each slot carries one reply into the game.
+Keep them enabled, and type `/reload` when all slots are used.
+
 ## Developer setup
 
 1. Install [Node.js](https://nodejs.org/) 22.16 or later. Node 24 is recommended.

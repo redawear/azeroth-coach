@@ -149,3 +149,24 @@ test('uninstall removes our addons after the game executable is gone', t => {
   assert.equal(fs.existsSync(path.join(addons, 'QuestieDB')), true);
   assert.throws(() => uninstall(dir));
 });
+test('install upgrades all slot titles, notes and icons without changing existing reply files', t => {
+  const { dir, client } = fixture(t); const runtime = path.join(dir, 'runtime');
+  install({ client, provider: 'claude', dir: runtime, validate: () => ({ status: 'ready' }) });
+  const addons = path.join(client, 'Interface', 'AddOns');
+  const icon = '## IconTexture: Interface\\Icons\\INV_Misc_Book_09';
+  for (let i = 1; i <= 200; i++) {
+    const name = 'AzerothCoach_S' + String(i).padStart(3, '0'); const folder = path.join(addons, name);
+    assert.equal(fs.readFileSync(path.join(folder, 'Inbox.lua'), 'utf8'), 'AzerothCoach_SlotData = nil\n');
+    fs.writeFileSync(path.join(folder, name + '.toc'), `## Title: Azeroth Coach slot ${i}\n`);
+    fs.writeFileSync(path.join(folder, 'Inbox.lua'), 'AzerothCoach_SlotData = {id=' + i + '}\n');
+  }
+  const result = install({ client, provider: 'claude', dir: runtime, validate: () => ({ status: 'ready' }) });
+  assert.equal(result.status, 'ready'); assert.equal(result.upgrade, true);
+  assert.ok(fs.readFileSync(path.join(addons, 'AzerothCoach', 'AzerothCoach.toc'), 'utf8').split(/\r?\n/).includes(icon));
+  for (let i = 1; i <= 200; i++) {
+    const number = String(i).padStart(3, '0'); const name = 'AzerothCoach_S' + number; const folder = path.join(addons, name);
+    const lines = fs.readFileSync(path.join(folder, name + '.toc'), 'utf8').split(/\r?\n/);
+    for (const line of ['## Title: Azeroth Coach slot ' + number, '## Notes: Part of Azeroth Coach. Keep it enabled.', icon, '## LoadOnDemand: 1', '## Dependencies: AzerothCoach', 'Inbox.lua']) assert.ok(lines.includes(line), name + ': ' + line);
+    assert.equal(fs.readFileSync(path.join(folder, 'Inbox.lua'), 'utf8'), 'AzerothCoach_SlotData = {id=' + i + '}\n');
+  }
+});

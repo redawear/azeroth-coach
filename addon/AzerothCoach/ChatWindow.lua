@@ -82,7 +82,7 @@ function W.Refresh()
         end
     end
     if W.working then line("Working · " .. math.floor(GetTime() - W.working) .. " s"); if W.progress then line(W.progress) end end
-    if state == "down" then line('The companion is not connected. Start it on this PC with "npm start". Tips still come from the quest data.') end
+    if state == "down" then line('The companion is not connected. Open the Start menu and click Restart Azeroth Coach. Tips still come from the quest data.') end
     if W.notice then line(W.notice) end
     W.content:SetSize(math.max(210, W.scroll:GetWidth() - 8), math.max(1, y))
     if atEnd then W.scroll:SetVerticalScroll(math.max(0, y - W.scroll:GetHeight())) else W.scroll:SetVerticalScroll(oldScroll) end
