@@ -1,5 +1,6 @@
 ## Interface: 16001
 ## Title: Azeroth Coach
+## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## Notes: Quest tips and a chat coach for Forever.
 ## Author: redawear
 ## Version: 0.1.0
