@@ -18,7 +18,7 @@ The tests cover these defects from the first Claude review:
 - Ten minutes without a companion: at most 11 s of strip visibility, with exactly one slot read.
 - Old presence files, new beats, restart, and wrap at 2,000.
 - Chat outbox recovery, long fights, one locked slot, and progress throttles.
-- Waiting tips, ordinary drag, route expiry, event bursts, and stale death events.
+- Waiting tips, ordinary drag, event bursts, and stale death events.
 - Separate character history, remembered fact names, expanded tip length, and level lists.
 - Guarded Wowhead redirects, source limits, reply validation, and MCP tool limits.
 - Screenshot deletion after success, model failure, failed file move, and startup after a crash.
@@ -59,8 +59,8 @@ See the [official config reference](https://developers.openai.com/codex/config-r
 Use [the Windows test guide](windows-test.md). It covers installation, transport, native UI, and quest facts.
 The following checks still need the actual client:
 
-- Blizzard templates, tracker taint, key bindings, map pins, and the sound-file signals.
-- Completed quests, facing, trivial quest range, quest limits, and QuestieDB coverage.
+- Blizzard templates, tracker taint, key bindings, and the sound-file signals.
+- Completed quests, trivial quest range, quest limits, and QuestieDB coverage.
 - Foreground capture, display scale, HDR, exclusive fullscreen, and screenshot timing.
 - Windows CLI launchers, Codex image arguments, and Claude's restricted `Read` rule.
 - Live Wowhead redirects and page quality. The automated redirect test uses a fixture.

@@ -11,10 +11,13 @@ const { cleanRuns, fallbackReader } = require('./recovery');
 const { Publisher } = require('./publisher');
 const { Jobs } = require('./jobs');
 const { Capture } = require('./supervisor');
+function completionLine(job, reply, usage) {
+  return job.trigger === 'hello' ? `hello: ${reply.status}` : `${job.job}: ${reply.status}; daily use ${JSON.stringify(usage)}`;
+}
 async function start() {
   if (process.platform !== 'win32') throw new Error('The screen companion needs Windows. Logic tests also run on Linux.');
   const cfg = loadConfig();
-  if (!fs.existsSync(path.join(cfg.addonDir, 'AzerothCoach', 'AzerothCoach.toc'))) throw new Error('Addon not found. Run npm run setup first.');
+  if (!fs.existsSync(path.join(cfg.addonDir, 'AzerothCoach', 'AzerothCoach.toc'))) throw new Error('Addon not found. Run the Azeroth Coach installer again, then restart the game.');
   let shutdown = async () => {};
   const instance = await acquire(cfg.runtime, () => shutdown());
   if (!instance) return;
@@ -52,7 +55,7 @@ async function start() {
         publisher.cfg.provider = loadConfig().provider;
         publisher.write(job, reply);
         publisher.saveState({ lastMessageAt: new Date().toISOString(), job: job.job, status: reply.status, usage: cache.usage() });
-        log(`${job.job}: ${reply.status}; daily use ${JSON.stringify(cache.usage())}`);
+        log(completionLine(job, reply, cache.usage()));
       } catch (error) { log('Companion error: ' + error.message); }
       finally { active.delete(key); }
     }
@@ -83,4 +86,4 @@ if (require.main === module) cli().catch(error => {
   try { fs.appendFileSync(path.join(require('./config').runtimeDir(), 'companion.log'), new Date().toISOString() + ' ' + error.message + '\n'); } catch {}
   process.exitCode = 1;
 });
-module.exports = { start };
+module.exports = { start, completionLine };

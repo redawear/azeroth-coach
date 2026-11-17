@@ -2,7 +2,7 @@
 
 Status: approved for build, 2026-11-13. Scope: the full addon and the full Windows companion.
 Claude owns architecture, API, UX and copy. Codex implements. This brief closes the open questions in `docs/design.md`.
-Build all of it, in this order: transport copy and its tests; `UI.lua`, data, planner, triggers, coach section, settings; route; companion jobs, CLI adapters, validator, limits, cache; chat window; the two tools and the screenshot; setup, doctor, README, provenance, `docs/design.md`.
+Build all of it, in this order: transport copy and its tests; `UI.lua`, data, planner, triggers, coach section, settings; companion jobs, CLI adapters, validator, limits, cache; chat window; the two tools and the screenshot; setup, doctor, README, provenance, `docs/design.md`.
 
 ## 1. Decisions
 
@@ -11,7 +11,7 @@ Build all of it, in this order: transport copy and its tests; `UI.lua`, data, pl
 | Quest data | Runtime dependency on the **QuestieDB provider addon** (`Questie/QuestieDB`, global `LibQuestieDB`, contract 4). No Questie data in this repo. | It is a separate addon with a public API and it lists interface 16001. Its license has an "all rights reserved" doubt, so we do not bundle it. |
 | Transport | Copy the wow-ai transport (MIT) at commit `60165ca`. No new pixel protocol. | Its author reports live tests on the Forever client. |
 | Companion | Node 22.16 or later, JavaScript, `node:sqlite`. One runtime dependency: `@modelcontextprotocol/sdk`. JSON config, not TOML. | Same stack as wow-ai. No native build on Windows. |
-| AI | The player's own `claude` or `codex` CLI login. One provider. Model and effort for each job. | Decided in design. Flags verified, see section 8. |
+| AI | The player's own `claude` or `codex` CLI login. One provider. Model and effort for each job. | Decided in design. Flags verified, see section 7. |
 | Coach placement | A section below the quest tracker (sketch 01). The player can move it. | The sketch default, and the most quiet place. |
 | AI actions | None. The AI returns text only. | Red lines. |
 
@@ -28,9 +28,10 @@ Keep the layout that exists: root `package.json`, `scripts/`, `tests/`, `compani
 | `Data.lua` | new | The only file that calls `LibQuestieDB`, `QuestDB`, `NpcDB` |
 | `State.lua` | wow-ai `GameContext()` and `Try()` | Reads the game state. Each call is guarded |
 | `Planner.lua`, `Triggers.lua`, `Tips.lua` | new, plain Lua, no game calls | Chains, dungeon plan, triggers, tip templates |
-| `Route.lua` | wow-ai `Map.lua`: `Project`, `ContinentYards`, `Heading`, pins, navigator math | Route line and map pins |
+| `Geo.lua` | wow-ai `Map.lua`: map math | Map projection, continent lookup, distance and bearing |
 | `UI.lua` | new shared helper (section 5) | Every frame part comes from here |
 | `CoachSection.lua`, `ChatWindow.lua`, `Settings.lua`, `Slash.lua` | chat from the wow-ai transcript, bubbles, copy box, input | The two features |
+| `MinimapButton.lua` | new, shared UI helper | Opens the chat and the shared menu. Shows a dot for a waiting or hidden tip. |
 
 `companion/`: `main.js` (from `bridge.js`), `protocol.js`, `agents.js` (only `claude` and `codex`), `capture.ps1` (plus `-Shot`), `install-slots.js`, `supervisor.js`, and new `jobs.js`, `prompts.js`, `validate.js`, `tools-mcp.js`, `sources.js`, `cache.js`.
 
@@ -45,6 +46,9 @@ Keep the wow-ai record, so the codec, the capture and their tests stay valid: `s
 
 - `chat` is `coach` or `chat`. `cwd` and `name` are empty. `flags` adds `job=coach|chat|deep`, `trig=<trigger id>`, and `shot`.
 - `ctx` holds the context lines (900 bytes maximum), then `--- facts ---`, then the facts pack (1,800 bytes maximum).
+- The context has a `Position` line after the zone: the player coordinates in percent and the subzone.
+- In the facts, each active quest row can have `target` (entity ID and kind), `d` (yards), and `dir` (8 compass points, north at the top of the map). The target comes from QuestieDB: the nearest objective spawn, else the start; the finish for a complete quest. Rank spawns with a yard scale that `Geo.Scale` keeps for each map. When the facts are full, drop the farthest targets first.
+- The AI can write the supplied distance and direction. It never writes coordinates, and `validate.js` rejects an answer with coordinates. The player sees no arrow.
 - `text` is the player message (400 characters maximum). For a coach job it is the template tip.
 - Reply in `AzerothCoach_SlotData.replies[]`: `chat, id, status ("working"|"done"|"error"), text, code, sources = { { label, url } }, by = "Claude Opus · medium"`. Error codes: `rate`, `auth`, `plan`, `timeout`, `invalid`, `shot`, `failed`.
   Optional `notes` hold the muted screenshot and Wowhead messages. `shotDone` restores the chat after a screenshot request.
@@ -59,7 +63,12 @@ It expires after 20 s and never retries. `/coach ping` and chat open can send an
 Chat and deep requests keep the reload outbox. Hello and coach requests cannot replace it.
 Local capture failures and timeouts clear their matching outbox. A failed question cannot replay at each login.
 With trusted signals, a request polls once after 5 s, then waits for its reply signal.
-Without trusted signals, ordinary requests poll every 15 s. Combat hides the strip and extends the request deadline.
+Without trusted signals, ordinary requests first poll after 5 s.
+After an empty poll, they wait 15 s, then 30 s, then 60 s. Later waits stay at 60 s.
+A working reply uses the same waits. This limits slot use while the answer is not ready.
+One chat question uses at most 5 slots within 180 s. One deep question uses at most 8 slots within 360 s.
+These limits exclude hello requests and other questions. A shared poll can read replies for several questions.
+Combat hides the strip and extends the request deadline. It also extends each poll wait.
 An old bundle timestamp affects presence only. It cannot discard a matching answer after a long fight.
 
 ## 4. Addon logic
@@ -69,7 +78,35 @@ Zone tables come from `Support.Get("ZoneDB").private`. Decode their source strin
 Index quests by map ID. Map alternative dungeon areas to the main dungeon area.
 Build a reverse index for prerequisites and breadcrumbs. Read race masks from `LibQuestieDB.Enum.raceMaskById`.
 
-**Planner.** `ChainOf(questId)`, `ChainsInZone(areaId, player)`, `DungeonPlan(areaId, player)`, `NextStep(questId)`, `LowValue(log)`. A quest is done, in the log, open, or blocked (level, race, class, prerequisite). Compute the level window of a dungeon from its quests (`requiredLevel` minimum to `questLevel` maximum). Store no level table.
+**Planner.** `ChainOf(questId)`, `ChainsInZone(areaId, player)`, `DungeonPlan(areaId, player)`, `NextStep(questId)`, `LowValue(log)`. A quest is done, in the log, open, or blocked (level, race, class, prerequisite).
+Dungeon counts use quests that fit the character limits, such as race, class, profession, and reputation.
+Quest progress and prerequisites do not remove quests from these counts. This keeps completed chain steps in the total.
+Character limits and quest progress have separate checks. Availability uses both checks.
+The plan also selects the first missing quest with a chain whose first step is open or active.
+The lower level bound is the median positive `requiredLevel`. The upper bound is the median positive `questLevel`, plus 3.
+For an even count, use the mean of the two middle values. Round the lower bound down and the median `questLevel` up to whole levels. Ignore missing and zero levels.
+Both bounds must exist. Include both bounds in the window. Store no level table.
+
+**Dungeon offers.** QuestieDB has no instance type field in its installed Forever support tables.
+`Data.lua` holds an explicit list of classic 5-player dungeon area IDs.
+The IDs and names match QuestieDB `support/Forever/Zones/dungeons.lua`. Alternative areas keep their existing quest indexes.
+The list includes the separate Stratholme and Dire Maul rows. It excludes transit areas, battlegrounds, and raids.
+Blackrock Spire stays out because its row combines 5-player and 10-player areas.
+Use the first entrance zone in dungeon row field 4. Map its area ID through the QuestieDB area-to-map tables.
+Offer tips only when `Geo.Continent` gives the same known continent for the entrance and the player.
+Queue the dungeon area. Resolve its title, text, quest IDs, and question state before each offer or display.
+A map change, level change, completed quest, or saved answer can change or stop a queued offer.
+Reuse each dungeon plan while the player snapshot table stays the same. Recheck saved answers on each resolution.
+Ask no question when completed quests are half or more of the total that fits the character.
+Show completed quests in both the question and later tips.
+AI facts include each supported dungeon in the level window, with its name, completed count, and total.
+These summaries use zone rows. Add them after quest facts, within the 1,800-byte limit.
+
+**Unverified Forever instances.** These rows stay out until metadata confirms a 5-player dungeon:
+15475 (Demon Fall Canyon), 15531 (The Tainted Scar), 15828 (The Burning of Andorhal), and 16074 (Karazhan Crypts).
+Also exclude 16236 (Scarlet Enclave), 16544 (City of Dalaran), 16611 (Ruins of Lordaeron), and 16732 (Excavation Site: Wetlands).
+Also exclude 16919 (The Hall of Thanes). Area 16560 has no row in the installed dungeon table.
+Reda must check these instances in the game before support is added.
 
 **Triggers.** The nine triggers of `docs/design.md`.
 - Priority: dungeon, level, gray quest, full log, turn-in, zone, capital, spells, deaths.
@@ -77,9 +114,13 @@ Build a reverse index for prerequisites and breadcrumbs. Read race masks from `L
 - The same trigger with the same subject fires one time in 24 hours. A gray quest fires one time.
 - Deaths: 3 deaths in one zone in 10 minutes. The log trigger reads the maximum from the client, or stays off.
 - Dungeon checks run on login, zone change, and level up. A pending tip blocks new offers.
+- An unanswered dungeon question can return after 24 hours, on a later dungeon check, if it still fits.
+  Dismiss and expiry leave the answer unset. `No` and `Done it` save `no` and stop later offers.
+  `Yes` permits later tips. `Later` delays tips for one hour. The 24-hour trigger limit still applies.
 - Merge event bursts into one snapshot. Keep event times, and discard a death event after 10 minutes.
 
 **Tip flow.** Trigger, facts, template text. If the companion is online and the limit allows, the addon asks for an AI tip and waits 12 seconds maximum. Then it shows the AI tip, or the template. It never changes a tip that is on the screen. A late AI tip goes to the cache only.
+Tips hold no positions. Positions still help rank quests and supply AI target facts.
 
 ## 5. Coach UI: quiet, part of the quest list
 
@@ -91,7 +132,7 @@ Build a reverse index for prerequisites and breadcrumbs. Read race masks from `L
 | Tip title and body | Font `ObjectiveTrackerLineFont`. Title color `OBJECTIVE_TRACKER_COLOR["Header"]`, hover `["HeaderHighlight"]`. Body color `["Normal"]`. Block offset 20, line space 4, first block 10 below the header (the module defaults). |
 | Menu, buttons | `MenuUtil.CreateContextMenu`. `UIPanelButtonTemplate`, height 20, font `GameFontNormalSmall`. |
 | Panels (chat, copy box) | `BackdropTemplate` with `Interface\Tooltips\UI-Tooltip-Background` and `UI-Tooltip-Border`, edge 16, insets 4 (the wow-ai `BACKDROP`). |
-| Other | `UIPanelCloseButton`, `UIPanelScrollFrameTemplate`, `UICheckButtonTemplate`, `ChatFontNormal`, `GameFontNormal`, `GameFontDisableSmall`, `Interface\FriendsFrame\StatusIcon-Online`, `-Away`, `-DnD`, `-Offline`, `Interface\ChatFrame\UI-ChatIM-SizeGrabber-*`, `Interface\Minimap\MinimapArrow`, `GameTooltip`, `UISpecialFrames`. |
+| Other | `UIPanelCloseButton`, `UIPanelScrollFrameTemplate`, `UICheckButtonTemplate`, `ChatFontNormal`, `GameFontNormal`, `GameFontDisableSmall`, `Interface\FriendsFrame\StatusIcon-Online`, `-Away`, `-DnD`, `-Offline`, `Interface\ChatFrame\UI-ChatIM-SizeGrabber-*`, `GameTooltip`, `UISpecialFrames`. |
 | Settings | `Settings.RegisterVerticalLayoutCategory` and `Settings.RegisterAddOnCategory`. If they are missing, slash commands only. |
 
 **The section is not a tracker module.** Do not call `ObjectiveTrackerManager` or `AddModule`: addon code inside the tracker can taint its secure quest item buttons. `AzerothCoachSection` is our own frame (parent `UIParent`, strata `LOW`, width 260) that looks like a module.
@@ -105,11 +146,14 @@ The menu item `Dock to quest tracker` restores the default.
 
 **What the player sees.**
 - Header text `Coach`. One block: a title (1 line, 32 characters maximum) and a body (3 lines, 110 characters maximum).
-- No background, no border, no icon, no button, no sound, no chat line, no glow. A new tip fades in for 0.5 s. Do not play `AddAnim`.
-- No tip and no route: the section is hidden. Nothing is on the screen. The minimize button collapses the block; a new tip then shows as `Coach (1)`.
-- Left-click on the tip opens the chat about this tip. Right-click opens the menu: `Ask the coach`, `Show route` (gray when the tip has no position), `Dismiss`, `Pause 15 minutes`, `Pause 1 hour`, `Dock to quest tracker`, `Settings`.
+- The tip has no background, border, icon, button, sound, chat line, or glow. A new tip fades in for 0.5 s.
+  Do not play `AddAnim`. The minimap button is the one exception. It stays visible unless the player hides it.
+- No tip: the section is hidden. Only the minimap button stays visible. The minimize button collapses the block.
+  A new tip then shows as `Coach (1)`.
+- Left-click on the tip opens the chat about this tip. Right-click opens the menu: `Ask the coach`, `Dismiss`, `Pause 15 minutes`, `Pause 1 hour`, `Dock to quest tracker`, `Settings`.
 - Hover shows a `GameTooltip` (`ANCHOR_LEFT`). Line 1: `From the quest data` or `Written by Claude from the quest data`. Line 2: `Click: ask the coach. Right-click: options.`
-- A question tip adds one row of 3 buttons, 76×20 each: `Yes` `No` `Later`. Only the dungeon trigger asks, one time for each dungeon. The addon saves the answer.
+- A question tip adds four 56×20 buttons with 4 px gaps: `Yes`, `No`, `Later`, and `Done it`.
+  Only the dungeon trigger asks. The addon saves the answer. `Done it` saves the same value as `No`.
 - A tip leaves after 10 minutes with a 1 s fade (setting: 5, 10, never). It stays while the mouse is on it.
 - No room below the tracker (bottom edge under 120 px): show only the header, with the tip title as its text.
 
@@ -118,6 +162,14 @@ The menu item `Dock to quest tracker` restores the default.
 - An instance (`IsInInstance()`), death or ghost, a taxi flight, a cinematic, Edit Mode, an active pause, the coach set to off.
 - The player collapsed the whole quest tracker (docked mode only).
 - A new tip also waits while `QuestFrame`, `GossipFrame`, `MerchantFrame` or the trainer frame is open.
+
+**Minimap button.** Start at 225 degrees, on the bottom-left edge. Left-drag moves it along the edge.
+Save its angle and visibility for each character. Left-click uses the same chat toggle as `/coach`.
+Right-click opens the Coach menu. A small dot marks a waiting tip or a tip in a hidden or collapsed block.
+Only the chat-open action marks the current tips as read. A refresh does not change their read state.
+A tip that arrives while the chat is open stays unread. A screenshot restore does not mark tips as read.
+Dismiss and expiry clear the dot.
+The first chat close or tip dismiss prints one hint about `/coach` and the button. Screenshot capture does not print it.
 
 ## 6. Chat UI
 
@@ -132,14 +184,14 @@ Frame `AzerothCoachChat`: `UI.Panel`, 420×360, minimum 320×240, maximum 640×6
 | Empty | `Ask about your quests, your zone, or your next dungeon.` |
 | Working | Bubble `Working · 6 s`, then tool lines: `Reads Warcraft Wiki`, `Reads Wowhead quest 123` |
 | Online, stale, down | Dot green, yellow, red. Text `Claude · online`, `Claude · no signal`, `Not connected` |
-| Companion down | `Send` is gray. `The companion is not connected. Start it on this PC with "npm start". Tips still come from the quest data.` |
+| Companion down | `Send` is gray. `The companion is not connected. Open the Start menu and click Restart Azeroth Coach. Tips still come from the quest data.` |
 | No QuestieDB, or too old | Coach tip, one time: `Quest data not found. Install the QuestieDB addon, then restart the game.` or `QuestieDB is too old for the coach. Update QuestieDB.` Context line: `No quest data` |
 | `rate` | `Limit reached: 20 questions each hour. Try again in 12 min.` |
 | `auth` | `Claude is not signed in on this PC. Run "claude" in a terminal, sign in, then ask again.` |
 | `plan` | `Your Claude plan reached its limit. Tips now come from the quest data.` |
 | `timeout` | `No answer after 120 s. Ask again.` |
 | `invalid` | `The answer did not match the quest data. Ask again.` |
-| `failed` | `The companion could not finish this question. Run "npm run doctor".` |
+| `failed` | `The companion could not finish this question. Ask again. If it fails again, type /coach doctor.` |
 | In combat | `You are in combat. Ask again after the fight.` |
 | No ack after 3 tries | `The companion cannot see the game window. Use windowed or borderless mode. Keep the top-left corner visible.` |
 | Slots used up | `Reply slots are used up. Type /reload to continue.` |
@@ -148,16 +200,12 @@ Frame `AzerothCoachChat`: `UI.Panel`, 420×360, minimum 320×240, maximum 640×6
 | No source used | Gray line under the answer: `No source. Check this answer.` |
 | Wowhead blocked | Gray line: `Wowhead is not available now. The coach used the wiki.` |
 
-Put the provider name of the reply (`Claude` or `Codex`) in these strings. Slash commands: `/coach` (open or close), `/coach <text>`, `/coach pause [minutes]`, `/coach resume`, `/coach dock`, `/coach route stop`, `/coach status`, `/coach doctor`, `/coach ping`.
+Put the provider name of the reply (`Claude` or `Codex`) in these strings.
+Slash commands: `/coach` (open or close), `/coach <text>`, `/coach pause [minutes]`, `/coach resume`, `/coach dock`,
+`/coach status`, `/coach doctor`, `/coach ping`, `/coach button on|off`.
+The settings also have a `Show the minimap button` checkbox.
 
-## 7. Route line
-
-- Positions come from QuestieDB only, through `Planner`. The AI never gives a position.
-- One route at a time. It is one line in the coach section, below the tip: a 16×16 `MinimapArrow` texture, then `210 yd · Marshal Dughan`. Turn the arrow with `SetRotation(bearing − GetPlayerFacing())`, 10 times each second, only while the line shows.
-- Arrival is 12 yards. Then the next step starts, or the line shows `You are here.` for 5 s and clears. No position (instance, missing API): `No position here.` Right-click on the line: `Stop route`.
-- The world map shows numbered pins (wow-ai pin code). Nothing moves or targets for the player.
-
-## 8. Companion
+## 7. Companion
 
 | Job | Claude default | Codex default | Timeout | Limit each hour | Tools |
 |---|---|---|---|---|---|
@@ -210,7 +258,7 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 4. Delete the image after success or failure. At startup, delete owned leftover run folders after the lock is acquired.
    Do not follow directory links. No background screenshot capture exists.
 
-## 9. Tests
+## 8. Tests
 
 `npm test` runs with no game (Node test runner, Lua in `fengari`, the wow-ai `wow_stub.lua`):
 - **From wow-ai, adapted:** codec round trip, strip records and dedup, slot file escape, agent arguments and stream parsers (recorded `claude` and `codex` streams), one full addon session (login, hello, trigger, strip, slot reply, tip on screen).
@@ -221,7 +269,7 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 - **Red lines (static):** the repo has no `SendInput`, `keybd_event`, `mouse_event`, `PostMessage`, `ReadProcessMemory`, `OpenProcess`. The addon has no `CreateMacro`, `EditMacro`, `RunMacroText`, `SecureActionButtonTemplate`.
 - **Sources and cache:** URL by numeric ID only, a cache hit means no fetch, expiry, the 24-hour stop, the user agent, rate limits with a fake clock.
 
-## 10. Windows install and doctor
+## 9. Windows install and doctor
 
 1. Install Node 22.16 or later. Sign in to `claude` or `codex` in a terminal.
 2. Install the QuestieDB addon from its release page into `_forever_\Interface\AddOns\QuestieDB`.
@@ -229,19 +277,21 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 4. Close the game fully and start it again. Use windowed or borderless mode.
 5. `npm start`. Then `npm run doctor`, and `/coach doctor` in the game.
 
-`npm run doctor` prints `PASS`, `FAIL` or `SKIP`, with the repair, for: Node and `node:sqlite`; the client folder; the addon, the slots and the signal files; the QuestieDB folder; the CLI path, version and login (one `PONG` run for each job model); each flag of section 8; the game window and one decoded `/coach ping`; fullscreen, HDR and display scale; the cache folder; one wiki call.
-`/coach doctor` prints the QuestieDB contract, each guarded game API (found or missing), the sound self-test, the free slots, and the presence state. It writes the same lines to a 300-line log in SavedVariables.
+`npm run doctor` prints `PASS`, `FAIL` or `SKIP`, with the repair, for: Node and `node:sqlite`; the client folder; the addon, the slots and the signal files; the QuestieDB folder; the CLI path, version and login (one `PONG` run for each job model); each flag of section 7; the game window and one decoded `/coach ping`; fullscreen, HDR and display scale; the cache folder; one wiki call.
+`/coach doctor` prints the QuestieDB contract, each guarded game API (found or missing), and the sound self-test.
+It also prints the free slots, the slots used this session, and the presence state.
+It writes the same lines to a 300-line log in SavedVariables.
 
-## 11. What is not tested
+## 10. What is not tested
 
 - No part of this ran in the Forever client. The first in-game session tests the transport copy, the tracker dock, and each state.
 - The Blizzard templates were read in the `forever` branch of `Gethe/wow-ui-source` (commit `bebcb6b`), not in the client.
-- These APIs are not verified in the client: completed quests, player facing, trivial quest range, and the quest log maximum.
+- These APIs are not verified in the client: completed quests, trivial quest range, and the quest log maximum.
   External QuestieDB map files pass the offline adapter test. Their live client behavior still needs a check.
 - QuestieDB says its Forever content is not complete. Its own Forever checklist is still open.
 - The CLI flags ran on Linux only. The image path for Claude (`--tools Read`) did not run. HDR, exclusive fullscreen, and display scale above 100% are not tested.
 
-## 12. Key risks
+## 11. Key risks
 
 1. **The strip is visible.** It covers up to 800×192 px at the top-left corner. Normal capture should clear it quickly.
    A failed ordinary request can show three 40 s attempts. A hello has one 10 s attempt. Nothing sends in combat.
@@ -253,7 +303,7 @@ Each slot write catches its own failure. A locked file cannot stop the other slo
 7. **Saved data wipe on this client.** Restore chat only when the session token survives.
    A full SavedVariables wipe creates a new token. It cannot restore another character's history or saved dungeon answers.
 
-## 13. Sources
+## 12. Sources
 
 - `chelinho139/wow-ai` at `60165ca` (GitHub `HEAD` on 2026-11-13): `docs/ARCHITECTURE.md`, `Codec.lua`, `WoWAI.lua`, `Map.lua`, `bridge/*.js`, `capture.ps1`, `tests/`.
 - `Gethe/wow-ui-source`, branch `forever`, `bebcb6b`: `Blizzard_ObjectiveTracker`, `Blizzard_SharedXML`, `Blizzard_Menu`, `Blizzard_Settings_Shared`.

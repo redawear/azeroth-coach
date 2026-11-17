@@ -26,9 +26,13 @@ test('the PE patch changes only the x64 subsystem field and rejects invalid file
 });
 test('detection uses the registry first, filters client folders, and checks both CLIs', t => {
   const { dir, client } = fixture(t);
-  const result = detect({ registry: [dir], env: {}, resolve: provider => { if (provider === 'codex') throw new Error('Absent'); } });
+  const result = detect({ registry: [dir], fallbackRoots: [], env: {}, resolve: provider => { if (provider === 'codex') throw new Error('Absent'); } });
   assert.equal(result.client, client); assert.deepEqual(result.clients, [client]);
   assert.equal(result.claude, true); assert.equal(result.codex, false);
+  const fallback = path.join(dir, 'World of Warcraft', '_forever_'); fs.mkdirSync(fallback, { recursive: true });
+  fs.writeFileSync(path.join(fallback, 'Wow.exe'), '');
+  const injected = detect({ registry: [dir], fallbackRoots: [dir], env: {}, resolve: () => {} });
+  assert.deepEqual(injected.clients, [client, fallback]);
   const roots = detect({ registry: ['/registry'], env: { ProgramFiles: '/programs' }, exists: () => true, resolve: () => {} });
   assert.equal(roots.clients[0], '/registry'); assert.ok(roots.clients.includes(path.join('/programs', 'World of Warcraft', '_forever_')));
 });
@@ -144,4 +148,25 @@ test('uninstall removes our addons after the game executable is gone', t => {
   assert.equal(fs.existsSync(path.join(addons, 'AzerothCoach')), false);
   assert.equal(fs.existsSync(path.join(addons, 'QuestieDB')), true);
   assert.throws(() => uninstall(dir));
+});
+test('install upgrades all slot titles, notes and icons without changing existing reply files', t => {
+  const { dir, client } = fixture(t); const runtime = path.join(dir, 'runtime');
+  install({ client, provider: 'claude', dir: runtime, validate: () => ({ status: 'ready' }) });
+  const addons = path.join(client, 'Interface', 'AddOns');
+  const icon = '## IconTexture: Interface\\Icons\\INV_Misc_Book_09';
+  for (let i = 1; i <= 200; i++) {
+    const name = 'AzerothCoach_S' + String(i).padStart(3, '0'); const folder = path.join(addons, name);
+    assert.equal(fs.readFileSync(path.join(folder, 'Inbox.lua'), 'utf8'), 'AzerothCoach_SlotData = nil\n');
+    fs.writeFileSync(path.join(folder, name + '.toc'), `## Title: Azeroth Coach slot ${i}\n`);
+    fs.writeFileSync(path.join(folder, 'Inbox.lua'), 'AzerothCoach_SlotData = {id=' + i + '}\n');
+  }
+  const result = install({ client, provider: 'claude', dir: runtime, validate: () => ({ status: 'ready' }) });
+  assert.equal(result.status, 'ready'); assert.equal(result.upgrade, true);
+  assert.ok(fs.readFileSync(path.join(addons, 'AzerothCoach', 'AzerothCoach.toc'), 'utf8').split(/\r?\n/).includes(icon));
+  for (let i = 1; i <= 200; i++) {
+    const number = String(i).padStart(3, '0'); const name = 'AzerothCoach_S' + number; const folder = path.join(addons, name);
+    const lines = fs.readFileSync(path.join(folder, name + '.toc'), 'utf8').split(/\r?\n/);
+    for (const line of ['## Title: Azeroth Coach slot ' + number, '## Notes: Part of Azeroth Coach. Keep it enabled.', icon, '## LoadOnDemand: 1', '## Dependencies: AzerothCoach', 'Inbox.lua']) assert.ok(lines.includes(line), name + ': ' + line);
+    assert.equal(fs.readFileSync(path.join(folder, 'Inbox.lua'), 'utf8'), 'AzerothCoach_SlotData = {id=' + i + '}\n');
+  }
 });

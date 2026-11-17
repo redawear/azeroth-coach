@@ -10,7 +10,8 @@ function installSlots(addons) {
   };
   for (let i = 1; i <= 200; i++) {
     const name = 'AzerothCoach_S' + pad3(i);
-    ensure(path.join(addons, name, name + '.toc'), `## Interface: 16001\n## Title: Azeroth Coach slot ${i}\n## LoadOnDemand: 1\n## Dependencies: AzerothCoach\nInbox.lua\n`);
+    fs.mkdirSync(path.join(addons, name), { recursive: true });
+    fs.writeFileSync(path.join(addons, name, name + '.toc'), `## Interface: 16001\n## Title: Azeroth Coach slot ${pad3(i)}\n## Notes: Part of Azeroth Coach. Keep it enabled.\n## IconTexture: Interface\\Icons\\INV_Misc_Book_09\n## LoadOnDemand: 1\n## Dependencies: AzerothCoach\nInbox.lua\n`);
     ensure(path.join(addons, name, 'Inbox.lua'), 'AzerothCoach_SlotData = nil\n');
     for (const type of ['ack', 'sig']) ensure(path.join(addons, 'AzerothCoach', type, pad3(i) + '.wav'), '');
   }

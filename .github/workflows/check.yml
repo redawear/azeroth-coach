@@ -1,7 +1,8 @@
 name: Check
 on:
+  # Pull requests run through pull_request. A push to a PR branch must not run the same checks again.
   push:
-    branches: ['**']
+    branches: [main]
     tags: ['v*']
   pull_request:
   workflow_dispatch:

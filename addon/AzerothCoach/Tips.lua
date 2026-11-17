@@ -1,10 +1,36 @@
 local AC = AzerothCoach
 AC.Tips = {}
 local M = AC.Tips
+local dungeonPlayer, dungeonPlans
 
-local function tip(kind, subject, title, body, ids, point)
+local function tip(kind, subject, title, body, ids)
     return {kind = kind, key = kind .. ":" .. tostring(subject), title = title, body = body,
-        questIds = ids or {}, point = point, createdAt = time(), from = "data"}
+        questIds = ids or {}, createdAt = time(), from = "data"}
+end
+
+function M.ResolveDungeon(area, p, saved)
+    if saved.settings.dungeons == false or not AC.Data.IsDungeon(area) then return nil end
+    local preference = saved.dungeons[tostring(area)]
+    if preference == "no" or (type(preference) == "number" and preference > time()) then return nil end
+    local continent = p.map and AC.Geo.Continent(p.map)
+    local entrance = AC.Data.EntranceMap(area)
+    if not continent or not entrance or AC.Geo.Continent(entrance) ~= continent then return nil end
+    if dungeonPlayer ~= p then dungeonPlayer, dungeonPlans = p, {} end
+    local plan = dungeonPlans[area]
+    if not plan then
+        plan = AC.Planner.Dungeon(AC.Data.InZone(area), p, AC.Data.Quest)
+        dungeonPlans[area] = plan
+    end
+    if not plan.inRange or (preference == nil and plan.completed * 2 >= plan.total) or not plan.nextStep then return nil end
+    local missing = plan.nextStep
+    local step, ids = missing.chain[1], {}
+    for _, q in ipairs(missing.chain) do ids[#ids + 1] = q.id end
+    local progress = "You finished " .. plan.completed .. " of " .. plan.total .. " quests."
+    local body = preference == nil and ("Levels " .. plan.minLevel .. "–" .. plan.maxLevel .. ". " .. progress .. " Do you want tips for this dungeon?") or (progress .. " The next quest is {q:" .. step.id .. "}.")
+    if preference == nil and #body > 110 then body = progress .. " Do you want tips for this dungeon?" end
+    local item = tip("dungeon", area, AC.Data.dungeons[area], body, ids)
+    item.dungeon, item.question = area, preference == nil
+    return item
 end
 
 function M.Build(event, p, previous, saved, argument)
@@ -16,10 +42,10 @@ function M.Build(event, p, previous, saved, argument)
     local open = 0
     for _, q in ipairs(zoneQuests) do if AC.Planner.Available(q, p) then open = open + 1 end end
     if event == "PLAYER_LEVEL_UP" and open > 0 then
-        add(tip("level", p.level, "New quests", "Level " .. p.level .. ". " .. p.zone .. " has " .. open .. (open == 1 and " open quest." or " open quests."), first and {first.quest.id}, first and first.point))
+        add(tip("level", p.level, "New quests", "Level " .. p.level .. ". " .. p.zone .. " has " .. open .. (open == 1 and " open quest." or " open quests."), first and {first.quest.id}))
     end
     if (event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_LOGIN") and first then
-        add(tip("zone", p.area or p.zone, "Quests in this zone", (first.turnIn and "Turn in {q:" or "Start with {q:") .. first.quest.id .. "}.", {first.quest.id}, first.point))
+        add(tip("zone", p.area or p.zone, "Quests in this zone", (first.turnIn and "Turn in {q:" or "Start with {q:") .. first.quest.id .. "}.", {first.quest.id}))
     end
     if event == "QUEST_TURNED_IN" and argument then
         local oldQuest = AC.Data.Quest(argument)
@@ -28,7 +54,7 @@ function M.Build(event, p, previous, saved, argument)
         for _, id in ipairs(ids) do
             local nextQuest = AC.Data.Quest(id)
             if nextQuest and AC.Planner.Available(nextQuest, p) then
-                add(tip("turnin", argument, "The next step", "Continue with {q:" .. id .. "}.", {id}, AC.Data.Point(nextQuest, "start", p)))
+                add(tip("turnin", argument, "The next step", "Continue with {q:" .. id .. "}.", {id}))
                 break
             end
         end
@@ -39,7 +65,7 @@ function M.Build(event, p, previous, saved, argument)
         end
     end
     if p.questMax and p.questMax > 0 and p.questCount >= p.questMax - 1 then
-        add(tip("full", p.questMax, "Your quest log is almost full", p.questCount .. " of " .. p.questMax .. " quests. Make room before you accept more.", first and {first.quest.id}, first and first.point))
+        add(tip("full", p.questMax, "Your quest log is almost full", p.questCount .. " of " .. p.questMax .. " quests. Make room before you accept more.", first and {first.quest.id}))
     end
     if event == "PLAYER_LEVEL_UP" and p.level % 2 == 0 then
         add(tip("spells", p.level, "New class spells", "Level " .. p.level .. ". Your class trainer can have new spells."))
@@ -52,23 +78,8 @@ function M.Build(event, p, previous, saved, argument)
         add(tip("deaths", p.area or p.zone, "This area may be too hard", "You died 3 times here in 10 minutes. Do easier quests first, or find a group."))
     end
     if saved.settings.dungeons ~= false and (event == "PLAYER_LOGIN" or event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_LEVEL_UP") then
-        for area, name in pairs(AC.Data.dungeons) do
-            local preference = saved.dungeons[tostring(area)]
-            if preference ~= "no" and not (type(preference) == "number" and preference > time()) then
-                local plan = AC.Planner.Dungeon(AC.Data.InZone(area), p, AC.Data.Quest)
-                if plan.total > 0 and plan.minLevel and p.level >= plan.minLevel - 2 and p.level <= (plan.maxLevel or plan.minLevel) and #plan.missing > 0 then
-                    local missing = plan.missing[1]
-                    local step = missing.chain and missing.chain[1]
-                    if step then
-                        local ids = {}
-                        for _, q in ipairs(missing.chain) do ids[#ids + 1] = q.id end
-                        local body = preference == nil and ("Levels " .. plan.minLevel .. "–" .. (plan.maxLevel or plan.minLevel) .. ". You have " .. plan.active .. " of " .. plan.total .. " quests. Do you want tips for this dungeon?") or ("You have " .. plan.active .. " of " .. plan.total .. " quests. The next quest is {q:" .. step.id .. "}.")
-                        local item = tip("dungeon", area, name, body, ids, not p.active[step.id] and AC.Data.Point(step, "start", p) or nil)
-                        item.dungeon, item.question = area, preference == nil
-                        add(item)
-                    end
-                end
-            end
+        for area in pairs(AC.Data.dungeons) do
+            add({kind = "dungeon", key = "dungeon:" .. tostring(area), dungeon = area, createdAt = time()})
         end
     end
     return out

@@ -15,8 +15,8 @@ function errorText(code, cfg, job, minutes) {
     timeout: `No answer after ${cfg.jobs[job.job].timeout} s. Ask again.`,
     invalid: 'The answer did not match the quest data. Ask again.',
     shot: 'The screenshot failed. The coach answers without it.',
-    failed: 'The companion could not finish this question. Run "npm run doctor".'
-  }[code] || 'The companion could not finish this question. Run npm run doctor.';
+    failed: 'The companion could not finish this question. Ask again. If it fails again, type /coach doctor.'
+  }[code] || 'The companion could not finish this question. Ask again. If it fails again, type /coach doctor.';
 }
 class Jobs {
   constructor(cache, { config = loadConfig, runner = run, screenshot = async () => null, progress = () => {}, log = () => {} } = {}) {

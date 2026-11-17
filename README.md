@@ -7,8 +7,10 @@ The full build is ready for its first Windows test. Automated checks pass on Lin
 No part has run in the Forever client yet.
 
 The coach shows one quiet tip below the quest tracker. It has no box or sound.
-It hides in combat and when no tip or route exists. Shift-drag the header to move it.
-Click a tip to ask about it. Right-click for routes, pause, and other options.
+It hides in combat and when no tip exists. Shift-drag the header to move it.
+Click a tip to ask about it. Right-click for pause and other options.
+The minimap button opens or closes the chat. Right-click it for the same options.
+Drag it along the minimap edge. A small dot shows a tip that waits or stays hidden.
 
 The addon works without AI. The separate **QuestieDB** addon supplies the quest facts.
 The Windows companion adds Claude or Codex through your own CLI login.
@@ -33,6 +35,9 @@ The Start menu has **Restart Azeroth Coach**, **Edit settings**, **Open log fold
 The companion has no console window or tray icon. Use `/coach doctor` to check the link.
 Uninstall keeps QuestieDB. It also keeps your settings and chat history unless you select their delete checkbox.
 See the [Windows test guide](docs/windows-test.md) for the first game session.
+
+The AddOn List shows 200 reply slots for Azeroth Coach. Each slot carries one reply into the game.
+Keep them enabled, and type `/reload` when all slots are used.
 
 ## Developer setup
 
@@ -117,17 +122,18 @@ CLI flags and screenshot support still need a Windows test.
 | `/coach <question>` | Ask a question |
 | `/coach pause [minutes]` / `resume` | Pause or resume tips |
 | `/coach dock` | Put the coach below the quest tracker |
-| `/coach route stop` | Stop the route |
 | `/coach on` / `off` | Enable or disable the coach |
 | `/coach interval 5` | Set the pause between tips: 5, 10, 20, or 30 minutes |
 | `/coach expire 10` | Remove a tip after 5 or 10 minutes, or `never` |
 | `/coach dungeons on` / `off` | Enable or disable dungeon tips |
+| `/coach button on` / `off` | Show or hide the minimap button |
 | `/coach settings` | Open native settings, or show the commands |
 | `/coach status` / `doctor` | Show the link and API checks |
 | `/coach ping` | Test the link without an AI request |
 
-Assign the chat key in the game's key bindings. Dungeon tips have `Yes`, `No`, and `Later` answers.
-Routes use positions from QuestieDB. They never use positions from the AI.
+Assign the chat key in the game's key bindings. Dungeon tips have `Yes`, `No`, `Later`, and `Done it` answers.
+The settings also have a `Show the minimap button` checkbox. Each character keeps the button position and visibility.
+Quest positions from QuestieDB help put the nearest quest first.
 
 ## Sources, images, and limits
 
@@ -167,8 +173,8 @@ MCP tools, provider streams, quotas, reply validation, and screenshot deletion.
 They do not prove game compatibility. Fullscreen, HDR, scale, taint, and live API behavior need the first Windows session.
 Real Claude and Codex text runs pass on Linux with the restricted flags. Windows image runs remain untested.
 See the [validation record](docs/validation.md) for the checks and limits.
-Two known issues remain: [instance classification](https://github.com/redawear/azeroth-coach/issues/1)
-and [signal reuse after 200 request IDs](https://github.com/redawear/azeroth-coach/issues/2).
+One known issue remains: [signal reuse after 200 request IDs](https://github.com/redawear/azeroth-coach/issues/2).
+Dungeon tips use a classic 5-player allow-list. Unverified Forever instances need an in-game check.
 
 The [implementation brief](docs/implementation.md) records the architecture and exact native UI patterns.
 The [design notes](docs/design.md) record the product decisions.

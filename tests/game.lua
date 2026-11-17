@@ -9,10 +9,10 @@ local function frame(kind, name, parent)
 end
 function M:SetScript(key, fn) self.scripts[key] = fn end
 function M:RegisterEvent(event) self.events[event] = true end
-function M:Show() self.shown = true end
-function M:Hide() self.shown = false end
+function M:Show() local changed = not self.shown; self.shown = true; if changed and self.scripts.OnShow then self.scripts.OnShow(self) end end
+function M:Hide() local changed = self.shown; self.shown = false; if changed and self.scripts.OnHide then self.scripts.OnHide(self) end end
 function M:IsShown() return self.shown and (not self.parent or self.parent:IsShown()) end
-function M:SetShown(value) self.shown = value end
+function M:SetShown(value) if value then self:Show() else self:Hide() end end
 function M:SetText(text) self.text = text end
 function M:GetText() return self.text or "" end
 function M:GetWidth() return self.width end
@@ -37,8 +37,17 @@ function M:CreateFontString(name) return frame("FontString", name, self) end
 function M:CreateTexture(name) local t = frame("Texture", name, self); self.textures[#self.textures + 1] = t; return t end
 for name in ("ClearAllPoints ClearFocus HighlightText SetAllPoints SetAtlas SetAutoFocus SetBackdrop SetBackdropColor SetClampedToScreen SetFocus SetFontObject SetFrameLevel SetFrameStrata SetHighlightTexture SetIgnoreParentScale SetJustifyH SetMaxLetters SetMaxLines SetMovable SetNormalFontObject SetNormalTexture SetOwner SetPushedTexture SetResizable SetResizeBounds SetRotation SetScale SetScrollChild SetTextColor SetTexture SetWordWrap EnableMouse RegisterForDrag StartMoving StartSizing StopMovingOrSizing AddLine AddMessage"):gmatch("%S+") do M[name] = function() end end
 CreateFrame = frame
+function M:RegisterForClicks(...) self.clicks = {...} end
+function M:SetTexCoord(...) self.texCoord = {...} end
+function M:SetTexture(value) self.texture = value end
+function M:SetFrameStrata(value) self.strata = value end
+function M:GetCenter() return self.centerX or 500, self.centerY or 400 end
+function M:GetEffectiveScale() return self.scale or 1 end
+function M:SetOwner(owner) self.owner = owner; self.lines = {} end
+function M:AddLine(text) self.lines[#self.lines + 1] = text end
 UIParent = frame("Frame", "UIParent")
 MinimapCluster = frame("Frame", "MinimapCluster", UIParent)
+Minimap = frame("Frame", "Minimap", MinimapCluster); Minimap:SetSize(140, 140)
 ObjectiveTrackerFrame = frame("Frame", "ObjectiveTrackerFrame", UIParent)
 ObjectiveTrackerFrame.NineSlice = frame("Frame", nil, ObjectiveTrackerFrame)
 GameTooltip = frame("Frame", "GameTooltip", UIParent)
@@ -50,6 +59,7 @@ function time() return STUB.epoch + math.floor(STUB.now) end
 function InCombatLockdown() return STUB.combat end
 function IsShiftKeyDown() return false end
 function GetPhysicalScreenSize() return 1920, 1080 end
+function GetCursorPosition() return STUB.cursorX or 500, STUB.cursorY or 400 end
 function PlaySoundFile(path) return STUB.sounds[path] == true end
 function StopSound() end
 function UnitLevel() return 12 end
@@ -57,7 +67,6 @@ function UnitClass() return "Warrior", "WARRIOR", 1 end
 function UnitRace() return "Human", "Human", 1 end
 function UnitFactionGroup() return "Alliance" end
 function GetZoneText() return "Test Meadow" end
-function GetPlayerFacing() return 0 end
 function UnitIsDeadOrGhost() return STUB.dead end
 function IsInInstance() return STUB.instance end
 C_Map = {
@@ -94,12 +103,12 @@ function STUB.Event(event, ...)
 end
 local quests = {
     [101] = {name="A Meadow Errand", requiredLevel=10, questLevel=12, zoneOrSort=20, startedBy={{201}}, finishedBy={{201}}},
-    [102] = {name="A Cave Errand", requiredLevel=10, questLevel=14, zoneOrSort=30, preQuestGroup={101}, startedBy={{201}}}
+    [102] = {name="A Cave Errand", requiredLevel=10, questLevel=14, zoneOrSort=1581, preQuestGroup={101}, startedBy={{201}}}
 }
 LibQuestieDB = {
     Enum = {raceMaskById={[1]=1,[95]=4294967296,[96]=8589934592}},
     RequireContract = function(v) return v == 4 end, flavor = {name="Forever"},
     Quest = {GetAllIds=function() return {101,102} end, Get=function(id,key) return quests[id] and quests[id][key] end},
     Npc = {Get=function(id,key) if id == 201 then if key == "name" then return "Meadow Keeper" elseif key == "spawns" then return {[20]={{20,30}}} end end end},
-    Support = {Get=function() return {private={areaIdToUiMapId="return {[20]=10,[30]=11}", uiMapIdToAreaId="return {[10]=20}", dungeons={[30]={"Test Cave"}}}} end}
+    Support = {Get=function() return {private={areaIdToUiMapId="return {[20]=10,[1581]=11}", uiMapIdToAreaId="return {[10]=20}", dungeons={[1581]={"The Deadmines",nil,20,{{20,20,30}}}}}} end}
 }

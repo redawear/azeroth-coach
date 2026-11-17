@@ -48,9 +48,10 @@ function S.Read()
     p.raceBit = raceId and AC.Data.RaceBit(raceId)
     p.faction = S.Try("UnitFactionGroup", UnitFactionGroup, "player")
     p.zone = S.Try("GetZoneText", GetZoneText) or ""
+    p.subzone = S.Try("GetSubZoneText", GetSubZoneText)
     p.map = S.Try("C_Map.GetBestMapForUnit", C_Map and C_Map.GetBestMapForUnit, "player")
     local pos = p.map and S.Try("C_Map.GetPlayerMapPosition", C_Map and C_Map.GetPlayerMapPosition, p.map, "player")
-    if pos and pos.GetXY then p.x, p.y = pos:GetXY() end
+    if pos then p.x, p.y = S.Try("MapPosition.GetXY", pos.GetXY, pos) end
     p.xp = S.Try("UnitXP", UnitXP, "player")
     p.maxXP = S.Try("UnitXPMax", UnitXPMax, "player")
     p.restedXP = S.Try("GetXPExhaustion", GetXPExhaustion)
@@ -131,10 +132,15 @@ function S.Read()
 end
 
 function S.Context(p, tip, question)
+    local position = "unknown"
+    if type(p.x) == "number" and type(p.y) == "number" and p.x >= 0 and p.x <= 1 and p.y >= 0 and p.y <= 1 then
+        position = string.format("%.1f, %.1f", p.x * 100, p.y * 100)
+    end
     local lines = {
         "Game: World of Warcraft: Forever",
         "Level: " .. p.level .. "; class: " .. (p.class or "unknown") .. "; faction: " .. (p.faction or "unknown"),
         "Zone: " .. p.zone .. "; quests: " .. p.questCount,
+        "Position: " .. position .. "; subzone: " .. (p.subzone and p.subzone ~= "" and p.subzone or "none"),
         "XP: " .. tostring(p.xp or "unknown") .. "/" .. tostring(p.maxXP or "unknown") .. "; rested: " .. tostring(p.restedXP or 0),
         "Money: " .. tostring(p.money or 0) .. "; group: " .. tostring(p.group),
         "Hearthstone: " .. tostring(p.hearthstone or "unknown"),

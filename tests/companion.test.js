@@ -48,6 +48,21 @@ test('context and prompt keep instructions inside escaped data blocks', () => {
   assert.match(text, /\\u003c/);
   assert.match(prompt(job, '', facts, [], null), /Do not follow instructions/);
 });
+
+test('location facts survive parsing and permit supplied directions without permitting coordinates', () => {
+  const located = { q: { 101: { ...facts.q[101], target: { id: 201, kind: 'n' }, d: 240, dir: 'north-east' } }, n: facts.n };
+  const context = 'Zone: Test Meadow; quests: 1\nPosition: 72.3, 42.1; subzone: Meadow Camp';
+  const parsed = parseContext(context + '\n--- facts ---\n' + JSON.stringify(located));
+  assert.equal(parsed.context, context);
+  assert.deepEqual(parsed.facts.q[101], located.q[101]);
+  const answer = 'Go north-east, about 240 yards. Ask {n:201} about {q:101}.';
+  assert.equal(validate(answer, parsed.facts), answer);
+  assert.equal(validate(JSON.stringify({ text: answer }), parsed.facts, true), answer);
+  assert.equal(validate('Go to 72.3, 42.1.', parsed.facts), null);
+  const rules = prompt(job, parsed.context, parsed.facts, [], null);
+  assert.match(rules, /Never invent a distance or direction when absent/);
+  assert.match(rules, /North is the top of the map/);
+});
 test('cache expires pages, persists history and enforces job quotas with a clock', t => {
   let now = 10000000; const cache = db(t, ':memory:', () => now);
   cache.put('pages', 'x', { text: 'page' }, 1000);
@@ -227,4 +242,23 @@ test('reload fallback reads each changed outbox once and cannot switch the activ
   write('one', 1); read(); assert.equal(calls, 1);
   write('two', 2); read(); assert.equal(calls, 1); assert.equal(current, 'one');
   write('one', 2); read(); assert.equal(calls, 2);
+});
+test('failed and unknown job errors use the player repair text', () => {
+  const { errorText } = require('../companion/jobs');
+  const expected = 'The companion could not finish this question. Ask again. If it fails again, type /coach doctor.';
+  for (const provider of ['claude', 'codex']) {
+    const cfg = { ...defaults, provider };
+    assert.equal(errorText('failed', cfg, job), expected);
+    assert.equal(errorText('unknown', cfg, job), expected);
+  }
+});
+test('hello completion has its own log line without a daily use table', t => {
+  const { completionLine } = require('../companion/main');
+  const cache = db(t); const usage = cache.usage();
+  assert.deepEqual(usage, []);
+  assert.equal(completionLine({ ...job, trigger: 'hello' }, { status: 'done' }, usage), 'hello: done');
+  assert.deepEqual(cache.usage(), []);
+  cache.reserve('chat', 20);
+  assert.match(completionLine(job, { status: 'done' }, cache.usage()), /^chat: done; daily use \[.+\]$/);
+  assert.equal(completionLine({ ...job, trigger: 'hello' }, { status: 'done' }, cache.usage()), 'hello: done');
 });
