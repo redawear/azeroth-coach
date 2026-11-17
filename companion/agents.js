@@ -10,21 +10,48 @@ async function stopRuns() {
     child.once('close', resolve); killTree(child);
   })));
 }
-function resolveCommand(provider, configured) {
+function isFile(file) {
+  try { return fs.statSync(file).isFile(); } catch { return false; }
+}
+function resolveCodexExe(script, arch) {
+  const wrapper = path.resolve(script);
+  if (!/[\\/]@openai[\\/]codex[\\/]bin[\\/]codex\.js$/i.test(wrapper)) return;
+  const target = { x64: 'x86_64-pc-windows-msvc', arm64: 'aarch64-pc-windows-msvc' }[arch];
+  if (!target) return;
+  const wrapperDir = path.dirname(wrapper);
+  let packageDir;
+  try {
+    packageDir = path.dirname(require.resolve(`@openai/codex-win32-${arch}/package.json`, { paths: [wrapperDir] }));
+  } catch {
+    packageDir = path.dirname(wrapperDir);
+  }
+  const exe = path.join(packageDir, 'vendor', target, 'bin', 'codex.exe');
+  if (isFile(exe)) return exe;
+}
+function resolveCommand(provider, configured, { platform = process.platform, arch = process.arch, execPath = process.execPath } = {}) {
   if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.');
-  const exists = p => { try { return fs.statSync(p).isFile(); } catch { return false; } };
+  const windows = platform === 'win32';
   const dirs = (process.env.PATH || '').split(path.delimiter);
-  if (process.platform === 'win32' && process.env.APPDATA) dirs.push(path.join(process.env.APPDATA, 'npm'));
-  const candidates = configured ? [configured] : [path.join(os.homedir(), '.local', 'bin', provider + (process.platform === 'win32' ? '.exe' : '')), ...dirs.flatMap(d => process.platform === 'win32' ? [path.join(d, provider + '.exe'), path.join(d, provider + '.cmd')] : [path.join(d, provider)])];
+  if (windows && process.env.APPDATA) dirs.push(path.join(process.env.APPDATA, 'npm'));
+  const candidates = configured ? [configured] : [path.join(os.homedir(), '.local', 'bin', provider + (windows ? '.exe' : '')), ...dirs.flatMap(d => windows ? [path.join(d, provider + '.exe'), path.join(d, provider + '.cmd')] : [path.join(d, provider)])];
   for (const file of candidates) {
-    if (!exists(file)) continue;
+    if (!isFile(file)) continue;
+    let script = file;
     if (/\.(cmd|bat)$/i.test(file)) {
       const src = fs.readFileSync(file, 'utf8');
       const match = [...src.matchAll(/"%~?dp0%?\\([^"]+)"/g)].find(x => !/(^|\\)node\.exe$/i.test(x[1]));
       if (!match) continue;
-      const script = path.resolve(path.dirname(file), match[1].replace(/\\/g, path.sep));
-      if (exists(script)) return { file: /\.exe$/i.test(script) ? script : process.execPath, args: /\.exe$/i.test(script) ? [] : [script] };
-    } else return { file: /\.(?:c|m)?js$/i.test(file) ? process.execPath : file, args: /\.(?:c|m)?js$/i.test(file) ? [file] : [] };
+      script = path.resolve(path.dirname(file), match[1].replace(/\\/g, path.sep));
+      if (!isFile(script)) continue;
+      if (/\.exe$/i.test(script)) return { file: script, args: [] };
+    } else if (!/\.(?:c|m)?js$/i.test(file)) return { file, args: [] };
+    if (windows) {
+      const exe = provider === 'codex' && resolveCodexExe(script, arch);
+      if (exe) return { file: exe, args: [] };
+      const node = path.join(path.dirname(execPath), 'node.exe');
+      if (path.basename(execPath).toLowerCase() !== 'node.exe' && isFile(node)) return { file: node, args: [script] };
+    }
+    return { file: execPath, args: [script] };
   }
   throw Object.assign(new Error(`${provider} is not installed. Set cliPath in config.json, or install the CLI.`), { code: 'auth' });
 }
@@ -94,9 +121,10 @@ function redact(text) {
 }
 function inspectCodex(command, timeout = 15000) {
   const deadline = Date.now() + timeout;
+  const cannotVerify = () => Object.assign(new Error('Cannot verify the Codex tool policy. Update the Codex CLI, then ask again.'), { code: 'failed' });
   const call = args => {
     const result = spawnSync(command.file, [...command.args, ...args], { encoding: 'utf8', windowsHide: true, timeout: Math.max(1, deadline - Date.now()), maxBuffer: 2_000_000 });
-    if (result.status !== 0) throw Object.assign(new Error('Cannot verify the Codex tool policy. Update the Codex CLI, then ask again.'), { code: 'failed' });
+    if (result.status !== 0) throw cannotVerify();
     return result.stdout;
   };
   const parseFeatures = text => new Map(text.trim().split('\n').map(line => {
@@ -110,11 +138,18 @@ function inspectCodex(command, timeout = 15000) {
   const off = features.flatMap(name => ['--disable', name]);
   const verified = parseFeatures(call([...off, 'features', 'list']));
   if (features.some(name => verified.get(name) !== false)) throw Object.assign(new Error('Codex tool restrictions did not take effect.'), { code: 'failed' });
-  // This response can hold bearer tokens. Keep it in memory. Never log or return it.
-  const servers = JSON.parse(call(['mcp', 'list', '--json'])).map(row => row.name);
-  if (servers.some(name => !/^[A-Za-z0-9_-]+$/.test(name))) throw Object.assign(new Error('Rename Codex MCP servers with letters, numbers, underscores or hyphens.'), { code: 'failed' });
+  // The MCP list can hold bearer tokens. Keep the raw output out of error messages.
+  const listServers = overrides => {
+    const output = call([...off, ...overrides, 'mcp', 'list', '--json']);
+    let rows;
+    try { rows = JSON.parse(output); } catch { throw cannotVerify(); }
+    if (!Array.isArray(rows) || rows.some(row => typeof row?.enabled !== 'boolean')) throw cannotVerify();
+    return rows;
+  };
+  const servers = listServers([]).filter(row => row.enabled).map(row => row.name);
+  if (servers.some(name => typeof name !== 'string' || !/^[A-Za-z0-9_-]+$/.test(name))) throw Object.assign(new Error('Rename Codex MCP servers with letters, numbers, underscores or hyphens.'), { code: 'failed' });
   const disabled = servers.flatMap(name => ['-c', `mcp_servers.${name}.enabled=false`]);
-  const checked = JSON.parse(call([...disabled, 'mcp', 'list', '--json']));
+  const checked = listServers(disabled);
   if (checked.some(row => row.enabled !== false)) throw Object.assign(new Error('Codex MCP restrictions did not take effect.'), { code: 'failed' });
   return { servers, features };
 }
