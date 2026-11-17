@@ -219,10 +219,14 @@ The settings also have a `Show the minimap button` checkbox.
 - Claude: `claude -p --output-format stream-json --verbose --model <m> --effort <e> --tools "" --strict-mcp-config --mcp-config <file> --allowedTools mcp__azeroth__wiki_lookup mcp__azeroth__wowhead_lookup --setting-sources "" --no-session-persistence --permission-mode default --append-system-prompt <rules>`. Prompt on stdin. Remove `CLAUDECODE` from the environment. The coach job gets an empty MCP config and `--json-schema`.
 - Codex: `codex exec --json --ephemeral --skip-git-repo-check -s read-only -m <m> -c model_reasoning_effort="<e>" -c mcp_servers.azeroth=<our server> -C <empty folder> -`. The coach job adds `--output-schema`.
 - Do **not** pass `--ignore-user-config` to Codex: it broke the login in our test (HTTP 401).
-- Before each Codex run, read its advertised features and inherited MCP names in memory.
-  Disable supported command, browser, app, image, plugin, hook, and extra-agent features. Verify the resulting policy.
-  Disable inherited MCP servers with `mcp_servers.<name>.enabled=false`. Accept simple server names only.
-  Do not print the raw config or MCP list. They can contain credentials.
+- Before each Codex run, read its advertised features and verify that the feature flags disable the restricted tools.
+  Apply those same flags to both MCP lists. The lists then exclude servers from disabled plugins.
+  Skip servers that are already disabled. For each enabled server, set `mcp_servers.<name>.enabled=false`.
+  Accept simple server names only. Verify that all servers in the second list are off.
+  Keep the raw config and MCP list out of error messages and logs. They can contain credentials.
+- On Windows, start the native `codex.exe` when the Codex npm package supplies it.
+  For JavaScript entry points, use `node.exe` beside `AzerothCoach.exe` when it is available.
+  Start these processes with `windowsHide` so their consoles stay hidden.
 - Never pass `bypassPermissions`, `--dangerously-*`, `workspace-write`, or a shell tool. A test checks this.
 
 **Safety.**
