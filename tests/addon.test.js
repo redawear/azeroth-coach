@@ -704,3 +704,14 @@ test('target ranking calls the map APIs once for each map, not once for each spa
   v.run('rectCalls = 0; AzerothCoach.State.Context(p)');
   assert.ok(Number(v.value('rectCalls')) < 10);
 });
+
+test('the strip shows for 2 s per try and comes back only when no acknowledgement arrives', () => {
+  const v = addon();
+  v.run('AzerothCoach.Link.queue={};AzerothCoach.Link.pending={};id=AzerothCoach.Link.Send("chat","","question");AzerothCoach.Link.Tick()');
+  assert.equal(v.value('AzerothCoachStrip.shown'), 'true');
+  v.run('STUB.now=STUB.now+2.1; AzerothCoach.Link.Tick()');
+  assert.equal(v.value('AzerothCoachStrip.shown'), 'false');
+  v.run('STUB.now=STUB.now+13; AzerothCoach.Link.Tick(); AzerothCoach.Link.Tick()');
+  assert.equal(v.value('AzerothCoachStrip.shown'), 'true');
+  assert.equal(v.value('AzerothCoach.Link.queue[1].tries'), '2');
+});

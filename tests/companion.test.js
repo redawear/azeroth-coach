@@ -14,7 +14,7 @@ const { Jobs } = require('../companion/jobs');
 const { cleanRuns, fallbackReader } = require('../companion/recovery');
 const { Publisher } = require('../companion/publisher');
 const { installSlots } = require('../companion/install-slots');
-const { argsFor, parser, run, classify, redact } = require('../companion/agents');
+const { argsFor, parser, run, classify, redact, inspectCodex, resolveCommand } = require('../companion/agents');
 const { vm } = require('./lua');
 const facts = { q: { 101: { name: 'A Meadow Errand', level: 12 } }, n: { 201: { name: 'Meadow Keeper' } } };
 const job = { session: 'test', chat: 'chat', id: 1, job: 'chat', ctx: '\n--- facts ---\n' + JSON.stringify(facts), text: 'Tell me about quest 101.' };
@@ -106,6 +106,86 @@ test('provider flags close built-in tools, and parsers use the final result', ()
   const codex = parser('codex'); codex({ type: 'item.completed', item: { type: 'agent_message', text: 'draft' } }); codex({ type: 'item.completed', item: { type: 'agent_message', text: 'final' } });
   assert.equal(codex({ type: 'turn.completed' }).text, 'final');
   assert.equal(parser('claude')({ type: 'result', structured_output: { text: 'tip' } }).text, '{"text":"tip"}');
+});
+function fakeCodex(t, listServers) {
+  const cli = path.join(temp(t), 'codex.js');
+  fs.writeFileSync(cli, `
+const args = process.argv.slice(2);
+const disabled = new Set(args.filter((_, index) => args[index - 1] === '--disable'));
+if (args.includes('features')) {
+  for (const name of ['shell_tool', 'plugins']) console.log(name + ' stable ' + !disabled.has(name));
+  process.exit(0);
+}
+if (!args.includes('mcp') || !args.includes('list') || !args.includes('--json')) process.exit(1);
+${listServers}
+`);
+  return { file: process.execPath, args: [cli] };
+}
+test('Codex lists and verifies MCP servers with plugins disabled', t => {
+  const command = fakeCodex(t, `
+if (args.includes('mcp_servers.plugin.enabled=false')) {
+  console.error('invalid transport in mcp_servers.plugin');
+  process.exit(1);
+}
+const rows = [{ name: 'local', enabled: !args.includes('mcp_servers.local.enabled=false') }];
+if (!disabled.has('plugins')) rows.push({ name: 'plugin', enabled: true });
+console.log(JSON.stringify(rows));
+`);
+  assert.deepEqual(inspectCodex(command), { servers: ['local'], features: ['shell_tool', 'plugins'] });
+});
+test('Codex leaves already disabled MCP servers out of the overrides', t => {
+  const command = fakeCodex(t, `
+if (args.includes('mcp_servers.inactive.enabled=false')) process.exit(1);
+console.log(JSON.stringify([{ name: 'inactive', enabled: false }]));
+`);
+  assert.deepEqual(inspectCodex(command).servers, []);
+});
+test('Codex keeps invalid MCP output out of the error message', t => {
+  const command = fakeCodex(t, `console.log('private-fixture');`);
+  assert.throws(() => inspectCodex(command), { code: 'failed', message: /Cannot verify the Codex tool policy/ });
+});
+function codexWrapper(t) {
+  const dir = temp(t);
+  const shim = path.join(dir, 'codex.cmd');
+  const pkg = path.join(dir, 'node_modules', '@openai', 'codex');
+  const script = path.join(pkg, 'bin', 'codex.js');
+  fs.mkdirSync(path.dirname(script), { recursive: true });
+  fs.writeFileSync(script, '');
+  fs.writeFileSync(shim, '"%dp0%\\node.exe" "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*');
+  return { shim, pkg, script };
+}
+function codexExe(pkg) {
+  const exe = path.join(pkg, 'vendor', 'x86_64-pc-windows-msvc', 'bin', 'codex.exe');
+  fs.mkdirSync(path.dirname(exe), { recursive: true });
+  fs.writeFileSync(exe, '');
+  return exe;
+}
+const windowsX64 = { platform: 'win32', arch: 'x64' };
+test('Windows Codex resolves the native binary from a nested npm package', t => {
+  const { shim, pkg, script } = codexWrapper(t);
+  const platformPkg = path.join(pkg, 'node_modules', '@openai', 'codex-win32-x64');
+  const exe = codexExe(platformPkg);
+  fs.writeFileSync(path.join(platformPkg, 'package.json'), '{}');
+  assert.deepEqual(resolveCommand('codex', shim, windowsX64), { file: exe, args: [] });
+  fs.unlinkSync(exe);
+  assert.deepEqual(resolveCommand('codex', shim, windowsX64), { file: process.execPath, args: [script] });
+});
+test('Windows Codex resolves the native binary from the wrapper vendor folder', t => {
+  const { shim, pkg } = codexWrapper(t);
+  const exe = codexExe(pkg);
+  assert.deepEqual(resolveCommand('codex', shim, windowsX64), { file: exe, args: [] });
+});
+test('Windows JavaScript entries use the console Node beside the GUI Node', t => {
+  const dir = temp(t);
+  const execPath = path.join(dir, 'AzerothCoach.exe');
+  const consoleNode = path.join(dir, 'node.exe');
+  const script = path.join(dir, 'fixture.js');
+  fs.writeFileSync(execPath, '');
+  fs.writeFileSync(script, '');
+  const runtime = { ...windowsX64, execPath };
+  assert.deepEqual(resolveCommand('claude', script, runtime), { file: execPath, args: [script] });
+  fs.writeFileSync(consoleNode, '');
+  assert.deepEqual(resolveCommand('claude', script, runtime), { file: consoleNode, args: [script] });
 });
 test('real subprocess adapter parses a fixture stream for both providers', async t => {
   const dir = temp(t); const cli = path.join(dir, 'fixture.js');

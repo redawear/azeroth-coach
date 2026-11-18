@@ -170,7 +170,9 @@ function L.Tick()
     if request then
         if not request.shownAt then draw(request.id, request.payload); request.shownAt = GetTime(); request.tries = request.tries + 1 end
         if not request.ackAtStart and sound("ack", request.id) then acknowledge(request) end
-        local limit = request.hello and 10 or 40
+        -- The companion reads the screen every 250 ms. Show the strip for 2 s only, then wait for the acknowledgement.
+        if not request.acked and GetTime() - request.shownAt >= 2 then hide() end
+        local limit = request.hello and 10 or 15
         if not request.acked and GetTime() - request.shownAt >= limit then
             hide()
             if not request.hello and request.tries < 3 then request.shownAt = nil

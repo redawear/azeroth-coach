@@ -58,7 +58,7 @@ Keep the wow-ai record, so the codec, the capture and their tests stay valid: `s
 **Link recovery.** Presence uses a saved counter that wraps at 2,000. The companion clears the next 50 files.
 The addon finds the old head at login. Only a new beat proves that the companion is online.
 The baseline scan uses batches of 64 calls. It cannot block one frame with 2,000 sound-file calls.
-Working signals need no login hello. Without signals, login sends one hello, with a 10 s strip and one slot poll.
+Working signals need no login hello. Without signals, login sends one hello, with a 2 s strip and one slot poll.
 It expires after 20 s and never retries. `/coach ping` and chat open can send another hello.
 Chat and deep requests keep the reload outbox. Hello and coach requests cannot replace it.
 Local capture failures and timeouts clear their matching outbox. A failed question cannot replay at each login.
@@ -219,10 +219,14 @@ The settings also have a `Show the minimap button` checkbox.
 - Claude: `claude -p --output-format stream-json --verbose --model <m> --effort <e> --tools "" --strict-mcp-config --mcp-config <file> --allowedTools mcp__azeroth__wiki_lookup mcp__azeroth__wowhead_lookup --setting-sources "" --no-session-persistence --permission-mode default --append-system-prompt <rules>`. Prompt on stdin. Remove `CLAUDECODE` from the environment. The coach job gets an empty MCP config and `--json-schema`.
 - Codex: `codex exec --json --ephemeral --skip-git-repo-check -s read-only -m <m> -c model_reasoning_effort="<e>" -c mcp_servers.azeroth=<our server> -C <empty folder> -`. The coach job adds `--output-schema`.
 - Do **not** pass `--ignore-user-config` to Codex: it broke the login in our test (HTTP 401).
-- Before each Codex run, read its advertised features and inherited MCP names in memory.
-  Disable supported command, browser, app, image, plugin, hook, and extra-agent features. Verify the resulting policy.
-  Disable inherited MCP servers with `mcp_servers.<name>.enabled=false`. Accept simple server names only.
-  Do not print the raw config or MCP list. They can contain credentials.
+- Before each Codex run, read its advertised features and verify that the feature flags disable the restricted tools.
+  Apply those same flags to both MCP lists. The lists then exclude servers from disabled plugins.
+  Skip servers that are already disabled. For each enabled server, set `mcp_servers.<name>.enabled=false`.
+  Accept simple server names only. Verify that all servers in the second list are off.
+  Keep the raw config and MCP list out of error messages and logs. They can contain credentials.
+- On Windows, start the native `codex.exe` when the Codex npm package supplies it.
+  For JavaScript entry points, use `node.exe` beside `AzerothCoach.exe` when it is available.
+  Start these processes with `windowsHide` so their consoles stay hidden.
 - Never pass `bypassPermissions`, `--dangerously-*`, `workspace-write`, or a shell tool. A test checks this.
 
 **Safety.**
@@ -294,7 +298,7 @@ It writes the same lines to a 300-line log in SavedVariables.
 ## 11. Key risks
 
 1. **The strip is visible.** It covers up to 800×192 px at the top-left corner. Normal capture should clear it quickly.
-   A failed ordinary request can show three 40 s attempts. A hello has one 10 s attempt. Nothing sends in combat.
+   Each try shows the strip for 2 s, because the companion reads the screen every 250 ms. An ordinary request tries again after 15 s, 3 times in total. A hello has one try. Nothing sends in combat.
 2. **A wrong name in plain text.** The token rule and the prompt lower this risk. They do not remove it. The tooltip and the `No source` line tell the player what to trust.
 3. **Tracker taint or a changed template.** We anchor to the tracker and never add to it. Each template call has a fallback.
 4. **QuestieDB gaps or a contract change.** `Data.lua` is the only contact point. A missing fact gives no tip.
